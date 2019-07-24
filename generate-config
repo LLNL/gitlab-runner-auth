@@ -1,0 +1,44 @@
+#!/bin/bash
+
+RUNNER_PREFIX=/etc/gitlab-runner
+CONFIG_TEMPLATE=$RUNNER_PREFIX/config.template
+CONFIG=$RUNNER_PREFIX/config.toml
+ADMIN_REGISTRATION_TOKEN=$RUNNER_PREFIX/admin_registration_token
+SHELL_RUNNER_TOKEN=$RUNNER_PREFIX/shell_runner_token
+BATCH_RUNNER_TOKEN=$RUNNER_PREFIX/batch_runner_token
+GL_API="https://lc.llnl.gov/gitlab/api/v4"
+
+shell_token_valid=$([[ $(curl -s -o /dev/null -w "%{http_code}" \
+                         --request POST "$GL_API/runners/verify" \
+                         --form "token=$SHELL_RUNNER_TOKEN") \
+                         == 200 ]] && echo "true")
+batch_token_valid=$([[ $(curl -s -o /dev/null -w "%{http_code}" \
+                         --request POST "$GL_API/runners/verify" \
+                         --form "token=$BATCH_RUNNER_TOKEN") \
+                         == 200 ]] && echo "true")
+
+if [[ -z "$shell_token_valid" ]]; then
+  # renew the token
+  curl -s --request POST "$GL_API/runners" \
+            --form "token=$ADMIN_REGISTRATION_TOKEN" \
+            --form "description=$HOSTNAME" \
+            --form "tag_list=$HOSTNAME" | jq -r ".token" > $SHELL_RUNNER_TOKEN
+fi
+
+if [[ -z "$batch_token_valid" ]]; then
+  # renew the token
+  curl -s --request POST "$GL_API/runners" \
+            --form "token=$ADMIN_REGISTRATION_TOKEN" \
+            --form "description=$HOSTNAME" \
+            --form "tag_list=$HOSTNAME" | jq -r ".token" > $BATCH_RUNNER_TOKEN
+fi
+
+if [[ -z "$shell_token_valid" || -z "$batch_token_valid" ]]
+then
+  # if either was invalid and we've gotten a new token, rewrite the config
+  /bin/sed \
+     "s/{{HOSTNAME}}/$HOSTNAME/;
+      s/{{BATCH_TOKEN}}/$BATCH_RUNNER_TOKEN/;
+      s/{{SHELL_TOKEN}}/$SHELL_RUNNER_TOKEN/" \
+        $CONFIG_TEMPLATE > $CONFIG
+fi
