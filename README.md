@@ -1,9 +1,22 @@
 # Gitlab Runner Registration
 
-This script is made to run in the `ExecStartPre` section of the `systemd`
-service file for the Gitlab runner. This reduces the complexity of using the
-standard runner registration process that would ordinarily clobber any
-of our custom runner config.
+## Overview
+
+This script will be run as part of the `ExecStartPre` script in the `systemd`
+service file for the Gitlab runners. The net effect is that restarting
+a runner will reconcile any authentication issues.
+
+When a host is first set to house a runner, both a shell and batch runner
+will be created, their config (an id and token) will be written to a
+json file.
+
+Subsequent script runs will check the validity of the existing tokens in
+said json file and update them by deleting the current runner and
+re-registering them (both shell and batch).
+
+In either case, if there are changes to the batch or shell tokens, they will
+then be rewritten to the config.toml file that the runner binary uses to 
+connect to Gitlab.
 
 ## Testing
 
