@@ -143,7 +143,7 @@ def configure_runner(prefix, api_url):
     try:
         # ensure tokens are still valid, otherwise, delete the runner and
         # register it again
-        with open(data_file, "rw") as fh:
+        with open(data_file, "r") as fh:
             changed = False
             runner_config = json.loads(fh.read())
             for runner_type, data in runner_config.items():
@@ -154,21 +154,22 @@ def configure_runner(prefix, api_url):
                     )
                     changed = True
             if changed:
-                fh.write(
-                    json.dumps(runner_config, sort_keys=True, indent=4)
-                )
-                update_runner_config(
-                    config_template,
-                    config_file,
-                    runner_config
-                )
+                with open(data_file, "w") as fh:
+                    fh.write(
+                        json.dumps(runner_config, sort_keys=True, indent=4)
+                    )
+                    update_runner_config(
+                        config_template,
+                        config_file,
+                        runner_config
+                    )
     except FileNotFoundError:
         # register new runner and write config
-        runner_info = {t: register_new_runner(api_url, admin_token, t, tags)
-                       for t in ["shell", "batch"]}
+        runner_config = {t: register_new_runner(api_url, admin_token, t, tags)
+                         for t in ["shell", "batch"]}
         with open(data_file, "w") as fh:
             fh.write(
-                json.dumps(runner_info, sort_keys=True, indent=4)
+                json.dumps(runner_config, sort_keys=True, indent=4)
             )
             update_runner_config(
                 config_template,

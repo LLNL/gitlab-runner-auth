@@ -1,6 +1,7 @@
 import os
 import socket
 import toml
+import shutil
 import pytest
 from pytest import fixture
 from tempfile import TemporaryDirectory
@@ -60,3 +61,28 @@ def test_update_runner_config(runner_data):
             runner_config = toml.loads(fh.read())
             assert all(r["token"] == runner_data["token"]
                        for r in runner_config["runners"])
+
+# end to end
+
+
+def test_configure_runner(base_url, admin_token):
+    with TemporaryDirectory() as td:
+        token_file = os.path.join(base_path, "tests/resources/admin-token")
+        config_template = os.path.join(
+            base_path,
+            "tests/resources/config.template"
+        )
+        shutil.copy(token_file, td)
+        shutil.copy(config_template, td)
+
+        configure_runner(td, base_url)
+
+        with open(os.path.join(td, "config.toml")) as fh:
+            assert toml.loads(fh.read())
+
+        # running twice with a config file in existence will traverse another
+        # code path
+        configure_runner(td, base_url)
+
+        with open(os.path.join(td, "config.toml")) as fh:
+            assert toml.loads(fh.read())
