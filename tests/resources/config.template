@@ -1,0 +1,23 @@
+concurrent = 8
+check_interval = 0
+
+[session_server]
+  session_timeout = 1800
+
+[[runners]]
+  name = "{hostname} Batch Runner"
+  url = "https://localhost:8080/"
+  token = "{batch_token}"
+  executor = "batch"
+  setuid = true
+  setuid_data_dir = "$HOME"
+  [runners.cache]
+
+[[runners]]
+  name = "{hostname} Shell Runner"
+  url = "https://localhost:8080/"
+  token = "{shell_token}"
+  executor = "shell"
+  setuid = true
+  setuid_data_dir = "$HOME"
+  [runners.cache]

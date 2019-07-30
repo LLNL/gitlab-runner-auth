@@ -30,9 +30,9 @@ def valid_runner_token(base_url, token):
 
     try:
         url = urljoin(base_url, "runners/verify")
-        data = urlencode({"token": token}, encoding=bytes)
+        data = urlencode({"token": token})
 
-        request = Request(url, data=data, method="POST")
+        request = Request(url, data=data.encode(), method="POST")
         urllib.request.urlopen(request)
         return True
     except HTTPError as e:
@@ -53,14 +53,14 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
             "token": admin_token,
             "description": tags[0] + "-" + runner_type,
             "tag_list": ",".join(tags),
-        }, encoding=bytes)
+        })
 
-        request = Request(url, data=data, method="POST")
+        request = Request(url, data=data.encode(), method="POST")
         response = urllib.request.urlopen(request)
-        if response.getcode == 201:
-            return json.parse(response.read())
+        if response.getcode() == 201:
+            return json.loads(response.read())
         else:
-            print("Registration for {runner_type} failed")
+            print("Registration for {runner_type} failed".format(runner_type))
             sys.exit(1)
     except HTTPError as e:
         print(
@@ -70,18 +70,18 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
         sys.exit(1)
 
 
-def delete_existing_runner(base_url, runner_id, access_token):
+def delete_existing_runner(base_url, runner_token, runner_id):
     """Delete an existing runner"""
 
     try:
         url = urljoin(base_url, "runners")
         data = urlencode({
-            "token": access_token,
-        }, encoding=bytes)
+            "token": runner_token,
+        })
 
-        request = Request(url, data=data, method="DELETE")
+        request = Request(url, data=data.encode(), method="DELETE")
         response = urllib.request.urlopen(request)
-        if response.getcode == 204:
+        if response.getcode() == 204:
             return True
         else:
             print("Deleting runner with id {} failed".format(runner_id))
@@ -110,9 +110,8 @@ def update_runner_config(config_template, config_file, internal_config):
 def configure_runner(prefix, api_url):
     """Takes a config template and inputs runner specific variables
 
-    Within the prefix, there must exist both a runner admin token for
-    registering runners and an access token for retrieving privileged data
-    or making privileged actions (like deleting a token).
+    Within the prefix, there must exist a runner admin token for registering
+    runners and deleting them.
 
     This script will be run as part of the ExecStartPre script in the systemd
     service file for the Gitlab runners. The net effect is that restarting
@@ -136,23 +135,20 @@ def configure_runner(prefix, api_url):
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
     admin_token = os.path.join(prefix, "admin-token")
-    access_token = os.path.join(prefix, "access-token")
 
     # read in both tokens we'll need for API access
     with open(admin_token) as fh:
         admin_token = fh.read()
-    with open(access_token) as fh:
-        access_token = fh.read()
 
     try:
         # ensure tokens are still valid, otherwise, delete the runner and
         # register it again
         with open(data_file, "rw") as fh:
             changed = False
-            runner_config = json.parse(fh.read())
+            runner_config = json.loads(fh.read())
             for runner_type, data in runner_config.items():
                 if not valid_runner_token(api_url, data["token"]):
-                    delete_existing_runner(api_url, data["id"], access_token)
+                    delete_existing_runner(api_url, data["token"], data["id"])
                     runner_config[runner_type] = register_new_runner(
                         api_url, admin_token, runner_type, tags
                     )
@@ -161,7 +157,11 @@ def configure_runner(prefix, api_url):
                 fh.write(
                     json.dumps(runner_config, sort_keys=True, indent=4)
                 )
-                update_runner_config(config_template, config_file, fh)
+                update_runner_config(
+                    config_template,
+                    config_file,
+                    runner_config
+                )
     except FileNotFoundError:
         # register new runner and write config
         runner_info = {t: register_new_runner(api_url, admin_token, t, tags)
@@ -170,7 +170,11 @@ def configure_runner(prefix, api_url):
             fh.write(
                 json.dumps(runner_info, sort_keys=True, indent=4)
             )
-            update_runner_config(config_template, config_file, fh)
+            update_runner_config(
+                config_template,
+                config_file,
+                runner_config
+            )
 
 
 if __name__ == '__main__':
