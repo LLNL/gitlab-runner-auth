@@ -2,7 +2,12 @@ import os
 import socket
 import toml
 import shutil
+import json
 import pytest
+import urllib.request
+from urllib.request import Request
+from urllib.parse import urlencode, urljoin
+from urllib.error import HTTPError
 from pytest import fixture
 from tempfile import TemporaryDirectory
 from generate_config import (
@@ -29,11 +34,32 @@ def admin_token():
         return fh.read()
 
 
+@fixture(scope="session")
+def access_token():
+    with open(os.path.join(base_path, "tests/resources/access-token")) as fh:
+        return fh.read()
+
+
 @fixture(scope="module")
-def runner_data(base_url, admin_token):
+def runner_data(base_url, admin_token, access_token):
     data = register_new_runner(base_url, admin_token, "test", generate_tags())
     yield data
-    delete_existing_runner(base_url, data["token"], data["id"])
+    all_repo_info = (repo_info(base_url, access_token, r["id"])
+                     for r in list_all_repos(base_url, access_token))
+    for repo in all_repo_info:
+        delete_existing_runner(base_url, repo["token"], repo["id"])
+
+
+def list_all_repos(base_url, access_token):
+    url = urljoin(base_url, "runners/all")
+    request = Request(url, headers={"PRIVATE-TOKEN": access_token})
+    return json.loads(urllib.request.urlopen(request).read())
+
+
+def repo_info(base_url, access_token, repo_id):
+    url = urljoin(base_url, "runners/" + str(repo_id))
+    request = Request(url, headers={"PRIVATE-TOKEN": access_token})
+    return json.loads(urllib.request.urlopen(request).read())
 
 
 def test_generate_tags():
