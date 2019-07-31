@@ -136,7 +136,6 @@ def configure_runner(prefix, api_url):
     config_template = os.path.join(prefix, "config.template")
     admin_token = os.path.join(prefix, "admin-token")
 
-    # read in both tokens we'll need for API access
     with open(admin_token) as fh:
         admin_token = fh.read()
 
