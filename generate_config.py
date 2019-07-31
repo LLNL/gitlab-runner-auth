@@ -52,7 +52,7 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
         data = urlencode({
             "token": admin_token,
             "description": tags[0] + "-" + runner_type,
-            "tag_list": ",".join(tags),
+            "tag_list": ",".join(tags + [runner_type]),
         })
 
         request = Request(url, data=data.encode(), method="POST")
