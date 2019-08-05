@@ -70,7 +70,7 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
         sys.exit(1)
 
 
-def delete_existing_runner(base_url, runner_token, runner_id):
+def delete_existing_runner(base_url, runner_token):
     """Delete an existing runner"""
 
     try:
@@ -84,12 +84,12 @@ def delete_existing_runner(base_url, runner_token, runner_id):
         if response.getcode() == 204:
             return True
         else:
-            print("Deleting runner with id {} failed".format(runner_id))
+            print("Deleting runner with id failed")
             sys.exit(1)
     except HTTPError as e:
         print(
-            "Error deleting runner with id {id}: {reason}"
-            .format(id=runner_id, reason=e.reason)
+            "Error deleting runner: {reason}"
+            .format(reason=e.reason)
         )
         sys.exit(1)
 
@@ -138,6 +138,10 @@ def configure_runner(prefix, api_url):
 
     with open(admin_token) as fh:
         admin_token = fh.read()
+
+    # ensure trailing '/' for urljoin
+    if api_url[:-1] != '/':
+        api_url += '/'
 
     try:
         # ensure tokens are still valid, otherwise, delete the runner and

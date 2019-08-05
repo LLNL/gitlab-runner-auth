@@ -47,7 +47,7 @@ def runner_data(base_url, admin_token, access_token):
     all_repo_info = (repo_info(base_url, access_token, r["id"])
                      for r in list_all_repos(base_url, access_token))
     for repo in all_repo_info:
-        delete_existing_runner(base_url, repo["token"], repo["id"])
+        delete_existing_runner(base_url, repo["token"])
 
 
 def list_all_repos(base_url, access_token):
