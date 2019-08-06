@@ -63,8 +63,10 @@ def repo_info(base_url, access_token, repo_id):
 
 
 def test_generate_tags():
+    os.environ["SYS_TYPE"] = "test"
     tags = generate_tags()
     assert socket.gethostname() == tags[0]
+    assert "test" in tags
 
 
 def test_valid_runner_token(base_url, runner_data):

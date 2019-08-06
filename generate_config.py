@@ -21,8 +21,11 @@ def generate_tags():
     on the appropriate host.
     """
 
-    # TODO: how to generate system tags?
-    return [socket.gethostname()]
+    tags = [socket.gethostname()]
+    host_env = os.environ
+    if "SYS_TYPE" in host_env:
+        tags.append(host_env["SYS_TYPE"])
+    return tags
 
 
 def valid_runner_token(base_url, token):
