@@ -53,13 +53,13 @@ def runner_data(base_url, admin_token, access_token):
 def list_all_repos(base_url, access_token):
     url = urljoin(base_url, "runners/all")
     request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-    return json.loads(urllib.request.urlopen(request).read())
+    return json.load(urllib.request.urlopen(request))
 
 
 def repo_info(base_url, access_token, repo_id):
     url = urljoin(base_url, "runners/" + str(repo_id))
     request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-    return json.loads(urllib.request.urlopen(request).read())
+    return json.load(urllib.request.urlopen(request))
 
 
 def test_generate_tags():
@@ -86,7 +86,7 @@ def test_update_runner_config(runner_data):
         update_runner_config(config_template, config_file, data)
 
         with open(config_file) as fh:
-            runner_config = toml.loads(fh.read())
+            runner_config = toml.load(fh)
             assert all(r["token"] == runner_data["token"]
                        for r in runner_config["runners"])
 
@@ -106,11 +106,11 @@ def test_configure_runner(base_url, admin_token):
         configure_runner(td, base_url)
 
         with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.loads(fh.read())
+            assert toml.load(fh)
 
         # running twice with a config file in existence will traverse another
         # code path
         configure_runner(td, base_url)
 
         with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.loads(fh.read())
+            assert toml.load(fh)

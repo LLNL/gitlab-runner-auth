@@ -61,7 +61,7 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
         request = Request(url, data=data.encode(), method="POST")
         response = urllib.request.urlopen(request)
         if response.getcode() == 201:
-            return json.loads(response.read())
+            return json.load(response)
         else:
             print("Registration for {runner_type} failed".format(runner_type))
             sys.exit(1)
@@ -151,7 +151,7 @@ def configure_runner(prefix, api_url):
         # register it again
         with open(data_file, "r") as fh:
             changed = False
-            runner_config = json.loads(fh.read())
+            runner_config = json.load(fh)
             for runner_type, data in runner_config.items():
                 if not valid_runner_token(api_url, data["token"]):
                     delete_existing_runner(api_url, data["token"])
