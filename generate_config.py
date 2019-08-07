@@ -154,7 +154,7 @@ def configure_runner(prefix, api_url):
             runner_config = json.loads(fh.read())
             for runner_type, data in runner_config.items():
                 if not valid_runner_token(api_url, data["token"]):
-                    delete_existing_runner(api_url, data["token"], data["id"])
+                    delete_existing_runner(api_url, data["token"])
                     runner_config[runner_type] = register_new_runner(
                         api_url, admin_token, runner_type, tags
                     )
