@@ -10,7 +10,7 @@ from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from pytest import fixture
 from tempfile import TemporaryDirectory
-from generate_config import (
+from gitlab_runner_config import (
     generate_tags,
     valid_runner_token,
     register_new_runner,
