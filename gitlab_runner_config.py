@@ -98,43 +98,42 @@ def delete_existing_runner(base_url, runner_token):
 
 
 def update_runner_config(config_template, config_file, internal_config):
-    """Using data from config.json, write the config.toml used by the runner"""
+    """Using data from config.json, write the config.toml used by the runner
+
+    Nominally, this method will provide a dictionary of keyword arguments to
+    format of the form:
+
+    {
+        "<runner_type>": "<runner_token>",
+        ...,
+    }
+
+    The config.toml must specify named template args like:
+
+    [[runners]]
+      token = "{runner_type}"
+      ...
+
+    and _not_ use positional arguments.
+    """
+
+    template_kwargs = {
+        "hostname": socket.gethostname(),
+    }
+    template_kwargs.update({runner: data["token"] for runner, data
+                            in internal_config.items()})
 
     with open(config_template) as th, open(config_file, 'w') as ch:
         template = th.read()
-        config = template.format(
-            hostname=socket.gethostname(),
-            shell_token=internal_config["shell"]["token"],
-            batch_token=internal_config["batch"]["token"]
-        )
+        config = template.format(**template_kwargs)
         ch.write(config)
 
 
 def configure_runner(prefix, api_url):
-    """Takes a config template and inputs runner specific variables
-
-    Within the prefix, there must exist a runner admin token for registering
-    runners and deleting them.
-
-    This script will be run as part of the ExecStartPre script in the systemd
-    service file for the Gitlab runners. The net effect is that restarting
-    a runner will reconcile any authentication issues.
-
-    When a host is first set to house a runner, both a shell and batch runner
-    will be created, their config (an id and token) will be written to a
-    json file.
-
-    Subsequent script runs will check the validity of the existing tokens in
-    config and update them by deleting the current runner and re-registering
-    one for this host (both shell and batch).
-
-    In either case, if there are changes to these tokens, they will then be
-    written to the config.toml file that the runner binary uses to  connect to
-    Gitlab.
-    """
+    """Takes a config template and substitutes runner tokens"""
 
     tags = generate_tags()
-    data_file = os.path.join(prefix, "data.json")
+    data_file = os.path.join(prefix, "runner-data.json")
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
     admin_token = os.path.join(prefix, "admin-token")
@@ -153,8 +152,12 @@ def configure_runner(prefix, api_url):
             changed = False
             runner_config = json.load(fh)
             for runner_type, data in runner_config.items():
-                if not valid_runner_token(api_url, data["token"]):
-                    delete_existing_runner(api_url, data["token"])
+                data = data or {}
+                token = data.get("token", "")
+                if not token or not valid_runner_token(api_url, token):
+                    # no refresh endpoint...delete and re-register
+                    if token:
+                        delete_existing_runner(api_url, data["token"])
                     runner_config[runner_type] = register_new_runner(
                         api_url, admin_token, runner_type, tags
                     )
@@ -164,24 +167,20 @@ def configure_runner(prefix, api_url):
                     fh.write(
                         json.dumps(runner_config, sort_keys=True, indent=4)
                     )
-                    update_runner_config(
-                        config_template,
-                        config_file,
-                        runner_config
-                    )
     except FileNotFoundError:
-        # register new runner and write config
+        # defaults to creating both a shell and batch runner
         runner_config = {t: register_new_runner(api_url, admin_token, t, tags)
                          for t in ["shell", "batch"]}
         with open(data_file, "w") as fh:
             fh.write(
                 json.dumps(runner_config, sort_keys=True, indent=4)
             )
-            update_runner_config(
-                config_template,
-                config_file,
-                runner_config
-            )
+
+    update_runner_config(
+        config_template,
+        config_file,
+        runner_config
+    )
 
 
 if __name__ == '__main__':
