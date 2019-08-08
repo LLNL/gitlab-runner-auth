@@ -157,7 +157,7 @@ def configure_runner(prefix, api_url):
                 if not token or not valid_runner_token(api_url, token):
                     # no refresh endpoint...delete and re-register
                     if token:
-                        delete_existing_runner(api_url, data["token"])
+                        delete_existing_runner(api_url, token)
                     runner_config[runner_type] = register_new_runner(
                         api_url, admin_token, runner_type, tags
                     )
