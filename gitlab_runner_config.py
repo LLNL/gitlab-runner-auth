@@ -46,7 +46,7 @@ def valid_runner_token(base_url, token):
             sys.exit(1)
 
 
-def register_new_runner(base_url, admin_token, runner_type, tags):
+def register_runner(base_url, admin_token, runner_type, tags):
     """Registers a runner and returns its info"""
 
     try:
@@ -73,7 +73,7 @@ def register_new_runner(base_url, admin_token, runner_type, tags):
         sys.exit(1)
 
 
-def delete_existing_runner(base_url, runner_token):
+def delete_runner(base_url, runner_token):
     """Delete an existing runner"""
 
     try:
@@ -157,8 +157,8 @@ def configure_runner(prefix, api_url):
                 if not token or not valid_runner_token(api_url, token):
                     # no refresh endpoint...delete and re-register
                     if token:
-                        delete_existing_runner(api_url, token)
-                    runner_config[runner_type] = register_new_runner(
+                        delete_runner(api_url, token)
+                    runner_config[runner_type] = register_runner(
                         api_url, admin_token, runner_type, tags
                     )
                     changed = True
@@ -169,7 +169,7 @@ def configure_runner(prefix, api_url):
                     )
     except FileNotFoundError:
         # defaults to creating both a shell and batch runner
-        runner_config = {t: register_new_runner(api_url, admin_token, t, tags)
+        runner_config = {t: register_runner(api_url, admin_token, t, tags)
                          for t in ["shell", "batch"]}
         with open(data_file, "w") as fh:
             fh.write(
