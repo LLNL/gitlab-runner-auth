@@ -28,6 +28,31 @@ def generate_tags():
     return tags
 
 
+def list_all_repos(base_url, access_token, filters=None):
+    try:
+        query = ""
+        if filters:
+            query = "?" + urlencode(filters)
+
+        url = urljoin(base_url, "runners/all" + query)
+        request = Request(url, headers={"PRIVATE-TOKEN": access_token})
+        return json.load(urllib.request.urlopen(request))
+    except HTTPError as e:
+        print("Error listing Gitlab repos: {reason}".format(reason=e.reason))
+        sys.exit(1)
+
+
+def repo_info(base_url, access_token, repo_id):
+    try:
+        url = urljoin(base_url, "runners/" + str(repo_id))
+        request = Request(url, headers={"PRIVATE-TOKEN": access_token})
+        return json.load(urllib.request.urlopen(request))
+    except HTTPError as e:
+        print("Error while requesting repo info for repo {repo}: {reason}"
+              .format(repo=repo_id, reason=e.reason))
+        sys.exit(1)
+
+
 def valid_runner_token(base_url, token):
     """Test whether or not a runner token is valid"""
 

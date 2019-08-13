@@ -12,6 +12,8 @@ from pytest import fixture
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
     generate_tags,
+    list_all_repos,
+    repo_info,
     valid_runner_token,
     register_runner,
     delete_runner,
@@ -47,18 +49,6 @@ def runner_data(base_url, admin_token, access_token):
     all_repo_info = (repo_info(base_url, access_token, r["id"])
                      for r in list_all_repos(base_url, access_token))
     for repo in all_repo_info:
-
-
-def list_all_repos(base_url, access_token):
-    url = urljoin(base_url, "runners/all")
-    request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-    return json.load(urllib.request.urlopen(request))
-
-
-def repo_info(base_url, access_token, repo_id):
-    url = urljoin(base_url, "runners/" + str(repo_id))
-    request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-    return json.load(urllib.request.urlopen(request))
         delete_runner(base_url, repo["token"])
 
 
