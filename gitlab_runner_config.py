@@ -30,7 +30,7 @@ def generate_tags():
     return tags
 
 
-def list_all_repos(base_url, access_token, filters=None):
+def list_runners(base_url, access_token, filters=None):
     try:
         query = ""
         if filters:
@@ -47,7 +47,7 @@ def list_all_repos(base_url, access_token, filters=None):
         sys.exit(1)
 
 
-def repo_info(base_url, access_token, repo_id):
+def runner_info(base_url, access_token, repo_id):
     try:
         url = urljoin(base_url, "runners/" + str(repo_id))
         request = Request(url, headers={"PRIVATE-TOKEN": access_token})
@@ -167,46 +167,56 @@ def configure_runner(prefix, api_url, stateless=False):
 
     runner_config = {}
     tags = generate_tags()
-    data_file = os.path.join(prefix, "runner-data.json")
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
-    admin_token = os.path.join(prefix, "admin-token")
 
     # ensure trailing '/' for urljoin
     if api_url[:-1] != '/':
         api_url += '/'
 
-    # TODO: differentiate between filename and token
-    with open(admin_token) as fh:
+    with open(os.path.join(prefix, "admin-token")) as fh:
         admin_token = fh.read()
 
     if stateless:
         with open(config_template) as fh:
             template = fh.read()
-        with open(os.path.join(prefix, "access-token")) as fh:
-            access_token = fh.read()
+        try:
+            with open(os.path.join(prefix, "access-token")) as fh:
+                access_token = fh.read()
+        except FileNotFoundError:
+            print("A personal access token is required for stateless mode")
+            sys.exit(1)
         filters = {
             "scope": "shared",
             "tag_list": ','.join([socket.gethostname()])
         }
-        runner_types = [token[1] for token in Formatter().parse(template)
-                        if token[1] != "hostname" and token[1] is not None]
-        repos = (repo_info(api_url, access_token, r["id"]) for r
-                 in list_all_repos(api_url, access_token, filters=filters))
-        for repo in repos:
-            try:
-                runner_type = (set(runner_types) & set(repo["tag_list"])).pop()
-                runner_config[runner_type] = repo
-            except KeyError:
-                # we may have picked up a runner which doesn't match our host
-                # skip it
-                pass
-
-        # query for shared runners with the same hostname
+        runner_types = set(token[1] for token in Formatter().parse(template)
+                           if token[1] != "hostname" and token[1] is not None)
+        runners = [runner_info(api_url, access_token, r["id"]) for r
+                   in list_runners(api_url, access_token, filters=filters)]
+        gitlab_tags = set(tag for r in runners for tag in r["tag_list"])
+        if len(runner_types & gitlab_tags) == 0:
+            # no config template tags in common with Gitlab, register runners
+            # for all the tags pulled from the template.
+            for runner_type in iter(runner_types):
+                runner_config[runner_type] = register_runner(
+                    api_url, admin_token, runner_type, tags
+                )
+        else:
+            for runner in runners:
+                try:
+                    runner_type = (runner_types
+                                   & set(runner["tag_list"])).pop()
+                    runner_config[runner_type] = runner
+                except KeyError:
+                    # we may have picked up a runner which doesn't match our
+                    # host, skip it
+                    pass
     else:
         try:
             # ensure tokens are still valid, otherwise, delete the runner and
             # register it again
+            data_file = os.path.join(prefix, "runner-data.json")
             with open(data_file, "r") as fh:
                 changed = False
                 runner_config = json.load(fh)

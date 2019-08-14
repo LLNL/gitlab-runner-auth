@@ -6,6 +6,8 @@ This script is meant to be run as part of the `ExecStartPre` script in the
 `systemd` service file for Gitlab runners. The net effect is that
 restarting a runner will reconcile any authentication issues.
 
+### Stateful
+
 When this script runs, it will look for a `runner-data.json` file and register
 a new runner for every key in that file. If `runner-data.json` does not exist,
 the script will try registering a shell and batch runner by default.
@@ -14,27 +16,39 @@ Subsequent script runs will check the validity of the existing tokens in
 said json file and update them by deleting the current runner and
 re-registering them.
 
-In either case, if there are changes to the tokens, they will then be
-rewritten to the config.toml file that the runner binary uses to
-connect to Gitlab.
+### Stateless
+
+If running with the `--stateless` flag, this script will _not_ write a
+`runner-data.json` file. Instead, it will query Gitlab for runners tagged with
+the host's hostname. If it finds none, it will create new ones for every runner
+"type" it finds in the `config.toml` file. Otherwise, it will use runner info
+retrieved from Gitlab to create the `config.toml` from template.
+
+In either case, if there are changes to the runners/tokens, they will then be
+rewritten to the `config.toml` file that the runner binary uses (on systemd
+start) to connect to Gitlab.
 
 ## Setup
 
 ```bash
-# /prefix/runner/
-# ├── admin-token
-# ├── config.template
-# └── runner-data.json
+/prefix/runner/
+├── access-token
+├── admin-token
+├── config.template
+└── runner-data.json
 ```
 
 This script expects a set of files in a (configurable) prefix:
+* `access-token`: the token used to query the Gitlab api in general, and only
+  necessary if using this script in `--stateless` mode
 * `admin-token`: the token used to register new runners
 * `config.template`: the template for your config.toml file
   * Uses python format string syntax expecting named template variables only
   * Variable names correspond to runner type keys in `runner-data.json`
 * `runner-data.json`: holds info retrieved from
   [registering a new runner](https://docs.gitlab.com/ee/api/runners.html#register-a-new-runner),
-  which are dicts of the form `{"id": id, "token": token}`.
+  which are dicts of the form `{"id": id, "token": token}`. This file will
+  _not_ be written if running with the `--stateless` flag.
 
 As mentioned, by default, this script will register both a shell and batch
 runner, but if you want to specify more or less using `runner-data.json`, the
@@ -56,7 +70,7 @@ To call `gitlab_runner_auth.py` in the `systemd` service file:
 ```bash
 ...
 [Service]
-ExecStartPre=/path/to/gitlab_runner_auth.py --api-url https://gitlab.example.com --prefix /path/to/runner/prefix
+ExecStartPre=/path/to/gitlab_runner_auth.py --api-url https://gitlab.example.com --prefix /path/to/runner/prefix --stateless
 ExecStart=/path/to/gitlab-runner --config /path/to/runner/prefix/config.toml...
 ...
 ```

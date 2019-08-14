@@ -4,16 +4,12 @@ import toml
 import shutil
 import json
 import pytest
-import urllib.request
-from urllib.request import Request
-from urllib.parse import urlencode, urljoin
-from urllib.error import HTTPError
 from pytest import fixture
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
     generate_tags,
-    list_all_repos,
-    repo_info,
+    list_runners,
+    runner_info,
     valid_runner_token,
     register_runner,
     delete_runner,
@@ -46,10 +42,10 @@ def access_token():
 def runner_data(base_url, admin_token, access_token):
     data = register_runner(base_url, admin_token, "test", generate_tags())
     yield data
-    all_repo_info = (repo_info(base_url, access_token, r["id"])
-                     for r in list_all_repos(base_url, access_token))
-    for repo in all_repo_info:
-        delete_runner(base_url, repo["token"])
+    all_runner_info = (runner_info(base_url, access_token, r["id"])
+                       for r in list_runners(base_url, access_token))
+    for runner in all_runner_info:
+        delete_runner(base_url, runner["token"])
 
 
 def test_generate_tags():
@@ -116,8 +112,40 @@ def test_configure_runner(base_url, admin_token):
             runner_data = json.load(fh)
             assert all(r_type in runner_data for r_type in ["shell", "batch"])
 
-        # should configure stateless as well off of existing runners
+
+def test_configure_runner_stateless(base_url, admin_token):
+    with TemporaryDirectory() as td:
+        token_file = os.path.join(base_path, "tests/resources/admin-token")
+        access_token_file = os.path.join(
+            base_path,
+            "tests/resources/access-token"
+        )
+        config_template = os.path.join(
+            base_path,
+            "tests/resources/config.template"
+        )
+        shutil.copy(token_file, td)
+        shutil.copy(config_template, td)
+
+        # fails without an access token
+        with pytest.raises(SystemExit):
+            configure_runner(td, base_url, stateless=True)
+
+        shutil.copy(access_token_file, td)
         configure_runner(td, base_url, stateless=True)
 
         with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh)
+            config = toml.load(fh)
+            assert config
+            assert len(config["runners"]) == 2
+            assert all(r["token"] for r in config["runners"])
+
+        # run a second time, we should get the config.toml back
+        # and the same runner tokens
+        os.unlink(os.path.join(td, "config.toml"))
+        configure_runner(td, base_url, stateless=True)
+
+        with open(os.path.join(td, "config.toml")) as fh:
+            assert toml.load(fh) == config
+            assert len(config["runners"]) == 2
+            assert all(r["token"] for r in config["runners"])
