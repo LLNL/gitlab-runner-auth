@@ -1,0 +1,8 @@
+# py cruft
+__pycache__
+
+# vim cruft
+*.sw*
+
+# code-cov
+.coverage
