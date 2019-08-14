@@ -85,11 +85,16 @@ def test_update_runner_config(runner_data):
 
 def test_configure_runner(base_url, admin_token):
     with TemporaryDirectory() as td:
+        access_token_file = os.path.join(
+            base_path,
+            "tests/resources/access-token"
+        )
         token_file = os.path.join(base_path, "tests/resources/admin-token")
         config_template = os.path.join(
             base_path,
             "tests/resources/config.template"
         )
+        shutil.copy(access_token_file, td)
         shutil.copy(token_file, td)
         shutil.copy(config_template, td)
 
@@ -101,6 +106,18 @@ def test_configure_runner(base_url, admin_token):
         # running twice with a config file in existence will traverse another
         # code path
         configure_runner(td, base_url)
+
+        with open(os.path.join(td, "config.toml")) as fh:
+            assert toml.load(fh)
+
+        # originally configured with shell and batch runners, lets make
+        # sure that data is in `runner-data.json`
+        with open(os.path.join(td, "runner-data.json")) as fh:
+            runner_data = json.load(fh)
+            assert all(r_type in runner_data for r_type in ["shell", "batch"])
+
+        # should configure stateless as well off of existing runners
+        configure_runner(td, base_url, stateless=True)
 
         with open(os.path.join(td, "config.toml")) as fh:
             assert toml.load(fh)

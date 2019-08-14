@@ -15,7 +15,7 @@ said json file and update them by deleting the current runner and
 re-registering them.
 
 In either case, if there are changes to the tokens, they will then be
-rewritten to the config.toml file that the runner binary uses to 
+rewritten to the config.toml file that the runner binary uses to
 connect to Gitlab.
 
 ## Setup
