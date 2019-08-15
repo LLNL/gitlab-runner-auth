@@ -1,10 +1,13 @@
 import os
+import re
 import socket
 import toml
 import shutil
 import json
 import pytest
+import stat
 from pytest import fixture
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
     generate_tags,
@@ -51,8 +54,30 @@ def runner_data(base_url, admin_token, access_token):
 def test_generate_tags():
     os.environ["SYS_TYPE"] = "test"
     tags = generate_tags()
-    assert socket.gethostname() == tags[0]
+    hostname = socket.gethostname()
+    assert hostname == tags[0]
+    assert re.sub(r'\d', '', hostname) == tags[1]
     assert "test" in tags
+
+    # test finding a resource manager
+    with TemporaryDirectory() as td:
+        managers = {
+            "slurm": os.path.join(td, "salloc"),
+            "lsf": os.path.join(td, "bsub"),
+            "cobalt": os.path.join(td, "cqsub")
+        }
+
+        os.environ["PATH"] += os.pathsep + td
+
+        def get_tags(exe):
+            Path(exe).touch()
+            os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
+            tags = generate_tags(runner_type="batch")
+            os.unlink(exe)
+            return tags
+
+        assert all(manager in get_tags(exe)
+                   for manager, exe in managers.items())
 
 
 def test_valid_runner_token(base_url, runner_data):

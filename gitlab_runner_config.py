@@ -1,6 +1,7 @@
 #!/bin/python3
 
 import os
+import re
 import sys
 import socket
 import argparse
@@ -13,7 +14,7 @@ from urllib.error import HTTPError
 from json import JSONDecodeError
 
 
-def generate_tags():
+def generate_tags(runner_type=""):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -23,10 +24,31 @@ def generate_tags():
     on the appropriate host.
     """
 
-    tags = [socket.gethostname()]
+    # the hostname is _required_ to make this script work, everything else
+    # is extra (as far as this script is concerned)
+    hostname = socket.gethostname()
+
+    # also tag with the generic cluster name by removing any trailing numbers
+    tags = [hostname, re.sub(r'\d', '', hostname)]
     host_env = os.environ
     if "SYS_TYPE" in host_env:
         tags.append(host_env["SYS_TYPE"])
+    if runner_type == "batch":
+        def which(cmd):
+            all_paths = (os.path.join(path, cmd) for path in
+                         os.environ["PATH"].split(os.pathsep))
+
+            return any(
+                os.access(path, os.X_OK) and os.path.isfile(path)
+                for path in all_paths
+            )
+
+        if which("bsub"):
+            tags.append("lsf")
+        elif which("salloc"):
+            tags.append("slurm")
+        elif which("cqsub"):
+            tags.append("cobalt")
     return tags
 
 
@@ -166,7 +188,6 @@ def configure_runner(prefix, api_url, stateless=False):
     """Takes a config template and substitutes runner tokens"""
 
     runner_config = {}
-    tags = generate_tags()
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
 
@@ -200,7 +221,10 @@ def configure_runner(prefix, api_url, stateless=False):
             # for all the tags pulled from the template.
             for runner_type in iter(runner_types):
                 runner_config[runner_type] = register_runner(
-                    api_url, admin_token, runner_type, tags
+                    api_url,
+                    admin_token,
+                    runner_type,
+                    generate_tags(runner_type=runner_type)
                 )
         else:
             for runner in runners:
@@ -228,7 +252,10 @@ def configure_runner(prefix, api_url, stateless=False):
                         if token:
                             delete_runner(api_url, token)
                         runner_config[runner_type] = register_runner(
-                            api_url, admin_token, runner_type, tags
+                            api_url,
+                            admin_token,
+                            runner_type,
+                            runner_type=runner_type
                         )
                         changed = True
                 if changed:
@@ -238,7 +265,12 @@ def configure_runner(prefix, api_url, stateless=False):
                         )
         except FileNotFoundError:
             # defaults to creating both a shell and batch runner
-            runner_config = {t: register_runner(api_url, admin_token, t, tags)
+            runner_config = {t: register_runner(
+                                    api_url,
+                                    admin_token,
+                                    t,
+                                    generate_tags(runner_type=t)
+                                )
                              for t in ["shell", "batch"]}
             with open(data_file, "w") as fh:
                 fh.write(
