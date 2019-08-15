@@ -52,12 +52,10 @@ def runner_data(base_url, admin_token, access_token):
 
 
 def test_generate_tags():
-    os.environ["SYS_TYPE"] = "test"
     tags = generate_tags()
     hostname = socket.gethostname()
     assert hostname == tags[0]
     assert re.sub(r'\d', '', hostname) == tags[1]
-    assert "test" in tags
 
     # test finding a resource manager
     with TemporaryDirectory() as td:

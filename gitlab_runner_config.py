@@ -30,9 +30,6 @@ def generate_tags(runner_type=""):
 
     # also tag with the generic cluster name by removing any trailing numbers
     tags = [hostname, re.sub(r'\d', '', hostname)]
-    host_env = os.environ
-    if "SYS_TYPE" in host_env:
-        tags.append(host_env["SYS_TYPE"])
     if runner_type == "batch":
         def which(cmd):
             all_paths = (os.path.join(path, cmd) for path in
