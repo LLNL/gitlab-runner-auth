@@ -101,7 +101,9 @@ From there, simply run `pytest`.
 
 ## Release
 
-The code of this site is released under the MIT License.
+This code is released under the MIT License.
 For more details see the LICENSE File.
+
+SPDX-License-Identifier: MIT
 
 LLNL-CODE-795365
