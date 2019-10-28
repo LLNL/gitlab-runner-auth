@@ -98,3 +98,10 @@ and copy that into the file `tests/resources/admin-token`.
 Make sure you've installed the dev dependencies in `dev-requirements.txt`.
 
 From there, simply run `pytest`.
+
+## Release
+
+The code of this site is released under the MIT License.
+For more details see the LICENSE File.
+
+LLNL-CODE-795365
