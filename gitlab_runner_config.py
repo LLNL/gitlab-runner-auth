@@ -42,15 +42,16 @@ def generate_tags(runner_type=""):
     hostname = socket.gethostname()
 
     # also tag with the generic cluster name by removing any trailing numbers
-    tags = [hostname, re.sub(r'\d', '', hostname)]
+    tags = [hostname, re.sub(r"\d", "", hostname)]
     if runner_type == "batch":
+
         def which(cmd):
-            all_paths = (os.path.join(path, cmd) for path in
-                         os.environ["PATH"].split(os.pathsep))
+            all_paths = (
+                os.path.join(path, cmd) for path in os.environ["PATH"].split(os.pathsep)
+            )
 
             return any(
-                os.access(path, os.X_OK) and os.path.isfile(path)
-                for path in all_paths
+                os.access(path, os.X_OK) and os.path.isfile(path) for path in all_paths
             )
 
         if which("bsub"):
@@ -88,8 +89,11 @@ def runner_info(base_url, access_token, repo_id):
         print("Failed parsing request data JSON")
         sys.exit(1)
     except HTTPError as e:
-        print("Error while requesting repo info for repo {repo}: {reason}"
-              .format(repo=repo_id, reason=e.reason))
+        print(
+            "Error while requesting repo info for repo {repo}: {reason}".format(
+                repo=repo_id, reason=e.reason
+            )
+        )
         sys.exit(1)
 
 
@@ -117,11 +121,13 @@ def register_runner(base_url, admin_token, runner_type, tags):
     try:
         # the first tag is always the hostname
         url = urljoin(base_url, "runners")
-        data = urlencode({
-            "token": admin_token,
-            "description": tags[0] + "-" + runner_type,
-            "tag_list": ",".join(tags + [runner_type]),
-        })
+        data = urlencode(
+            {
+                "token": admin_token,
+                "description": tags[0] + "-" + runner_type,
+                "tag_list": ",".join(tags + [runner_type]),
+            }
+        )
 
         request = Request(url, data=data.encode(), method="POST")
         response = urllib.request.urlopen(request)
@@ -132,8 +138,9 @@ def register_runner(base_url, admin_token, runner_type, tags):
             sys.exit(1)
     except HTTPError as e:
         print(
-            "Error registering runner {runner} with tags {tags}: {reason}"
-            .format(runner=runner_type, tags=",".join(tags), reason=e.reason)
+            "Error registering runner {runner} with tags {tags}: {reason}".format(
+                runner=runner_type, tags=",".join(tags), reason=e.reason
+            )
         )
         sys.exit(1)
 
@@ -143,9 +150,11 @@ def delete_runner(base_url, runner_token):
 
     try:
         url = urljoin(base_url, "runners")
-        data = urlencode({
-            "token": runner_token,
-        })
+        data = urlencode(
+            {
+                "token": runner_token,
+            }
+        )
 
         request = Request(url, data=data.encode(), method="DELETE")
         response = urllib.request.urlopen(request)
@@ -155,10 +164,7 @@ def delete_runner(base_url, runner_token):
             print("Deleting runner with id failed")
             sys.exit(1)
     except HTTPError as e:
-        print(
-            "Error deleting runner: {reason}"
-            .format(reason=e.reason)
-        )
+        print("Error deleting runner: {reason}".format(reason=e.reason))
         sys.exit(1)
 
 
@@ -185,10 +191,11 @@ def update_runner_config(config_template, config_file, internal_config):
     template_kwargs = {
         "hostname": socket.gethostname(),
     }
-    template_kwargs.update({runner: data["token"] for runner, data
-                            in internal_config.items()})
+    template_kwargs.update(
+        {runner: data["token"] for runner, data in internal_config.items()}
+    )
 
-    with open(config_template) as th, open(config_file, 'w') as ch:
+    with open(config_template) as th, open(config_file, "w") as ch:
         template = th.read()
         config = template.format(**template_kwargs)
         ch.write(config)
@@ -202,8 +209,8 @@ def configure_runner(prefix, api_url, stateless=False):
     config_template = os.path.join(prefix, "config.template")
 
     # ensure trailing '/' for urljoin
-    if api_url[:-1] != '/':
-        api_url += '/'
+    if api_url[:-1] != "/":
+        api_url += "/"
 
     with open(os.path.join(prefix, "admin-token")) as fh:
         admin_token = fh.read()
@@ -217,14 +224,16 @@ def configure_runner(prefix, api_url, stateless=False):
         except FileNotFoundError:
             print("A personal access token is required for stateless mode")
             sys.exit(1)
-        filters = {
-            "scope": "shared",
-            "tag_list": ','.join([socket.gethostname()])
-        }
-        runner_types = set(token[1] for token in Formatter().parse(template)
-                           if token[1] != "hostname" and token[1] is not None)
-        runners = [runner_info(api_url, access_token, r["id"]) for r
-                   in list_runners(api_url, access_token, filters=filters)]
+        filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
+        runner_types = set(
+            token[1]
+            for token in Formatter().parse(template)
+            if token[1] != "hostname" and token[1] is not None
+        )
+        runners = [
+            runner_info(api_url, access_token, r["id"])
+            for r in list_runners(api_url, access_token, filters=filters)
+        ]
         gitlab_tags = set(tag for r in runners for tag in r["tag_list"])
         if len(runner_types & gitlab_tags) == 0:
             # no config template tags in common with Gitlab, register runners
@@ -234,13 +243,12 @@ def configure_runner(prefix, api_url, stateless=False):
                     api_url,
                     admin_token,
                     runner_type,
-                    generate_tags(runner_type=runner_type)
+                    generate_tags(runner_type=runner_type),
                 )
         else:
             for runner in runners:
                 try:
-                    runner_type = (runner_types
-                                   & set(runner["tag_list"])).pop()
+                    runner_type = (runner_types & set(runner["tag_list"])).pop()
                     runner_config[runner_type] = runner
                 except KeyError:
                     # we may have picked up a runner which doesn't match our
@@ -262,57 +270,43 @@ def configure_runner(prefix, api_url, stateless=False):
                         if token:
                             delete_runner(api_url, token)
                         runner_config[runner_type] = register_runner(
-                            api_url,
-                            admin_token,
-                            runner_type,
-                            runner_type=runner_type
+                            api_url, admin_token, runner_type, runner_type=runner_type
                         )
                         changed = True
                 if changed:
                     with open(data_file, "w") as fh:
-                        fh.write(
-                            json.dumps(runner_config, sort_keys=True, indent=4)
-                        )
+                        fh.write(json.dumps(runner_config, sort_keys=True, indent=4))
         except FileNotFoundError:
             # defaults to creating both a shell and batch runner
-            runner_config = {t: register_runner(
-                                    api_url,
-                                    admin_token,
-                                    t,
-                                    generate_tags(runner_type=t)
-                                )
-                             for t in ["shell", "batch"]}
-            with open(data_file, "w") as fh:
-                fh.write(
-                    json.dumps(runner_config, sort_keys=True, indent=4)
+            runner_config = {
+                t: register_runner(
+                    api_url, admin_token, t, generate_tags(runner_type=t)
                 )
+                for t in ["shell", "batch"]
+            }
+            with open(data_file, "w") as fh:
+                fh.write(json.dumps(runner_config, sort_keys=True, indent=4))
 
-    update_runner_config(
-        config_template,
-        config_file,
-        runner_config
-    )
+    update_runner_config(config_template, config_file, runner_config)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="On the fly runner config")
     parser.add_argument(
         "-p",
         "--prefix",
         default="/etc/gitlab-runner",
-        help="""The runner config directory prefix"""
+        help="""The runner config directory prefix""",
     )
     parser.add_argument(
-        "--api-url",
-        default="http://localhost:8080/api/v4",
-        help="""Gitlab API URL"""
+        "--api-url", default="http://localhost:8080/api/v4", help="""Gitlab API URL"""
     )
     parser.add_argument(
         "--stateless",
         action="store_true",
         help="""If used, disables writing runner-data.json and must query
         Gitlab directly for state.
-        """
+        """,
     )
     args = parser.parse_args()
     configure_runner(args.prefix, args.api_url, stateless=args.stateless)
