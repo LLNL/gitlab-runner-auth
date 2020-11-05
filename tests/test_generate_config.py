@@ -58,8 +58,10 @@ def access_token():
 def runner_data(base_url, admin_token, access_token):
     data = register_runner(base_url, admin_token, "test", generate_tags())
     yield data
-    all_runner_info = (runner_info(base_url, access_token, r["id"])
-                       for r in list_runners(base_url, access_token))
+    all_runner_info = (
+        runner_info(base_url, access_token, r["id"])
+        for r in list_runners(base_url, access_token)
+    )
     for runner in all_runner_info:
         delete_runner(base_url, runner["token"])
 
@@ -68,14 +70,14 @@ def test_generate_tags():
     tags = generate_tags()
     hostname = socket.gethostname()
     assert hostname == tags[0]
-    assert re.sub(r'\d', '', hostname) == tags[1]
+    assert re.sub(r"\d", "", hostname) == tags[1]
 
     # test finding a resource manager
     with TemporaryDirectory() as td:
         managers = {
             "slurm": os.path.join(td, "salloc"),
             "lsf": os.path.join(td, "bsub"),
-            "cobalt": os.path.join(td, "cqsub")
+            "cobalt": os.path.join(td, "cqsub"),
         }
 
         os.environ["PATH"] += os.pathsep + td
@@ -87,8 +89,7 @@ def test_generate_tags():
             os.unlink(exe)
             return tags
 
-        assert all(manager in get_tags(exe)
-                   for manager, exe in managers.items())
+        assert all(manager in get_tags(exe) for manager, exe in managers.items())
 
 
 def test_valid_runner_token(base_url, runner_data):
@@ -98,9 +99,7 @@ def test_valid_runner_token(base_url, runner_data):
 def test_update_runner_config(runner_data):
     with TemporaryDirectory() as td:
         config_file = os.path.join(td, "config.toml")
-        config_template = os.path.join(
-            base_path, "tests/resources/config.template"
-        )
+        config_template = os.path.join(base_path, "tests/resources/config.template")
         data = {
             "shell": runner_data,
             "batch": runner_data,
@@ -109,23 +108,19 @@ def test_update_runner_config(runner_data):
 
         with open(config_file) as fh:
             runner_config = toml.load(fh)
-            assert all(r["token"] == runner_data["token"]
-                       for r in runner_config["runners"])
+            assert all(
+                r["token"] == runner_data["token"] for r in runner_config["runners"]
+            )
+
 
 # end to end
 
 
 def test_configure_runner(base_url, admin_token):
     with TemporaryDirectory() as td:
-        access_token_file = os.path.join(
-            base_path,
-            "tests/resources/access-token"
-        )
+        access_token_file = os.path.join(base_path, "tests/resources/access-token")
         token_file = os.path.join(base_path, "tests/resources/admin-token")
-        config_template = os.path.join(
-            base_path,
-            "tests/resources/config.template"
-        )
+        config_template = os.path.join(base_path, "tests/resources/config.template")
         shutil.copy(access_token_file, td)
         shutil.copy(token_file, td)
         shutil.copy(config_template, td)
@@ -152,14 +147,8 @@ def test_configure_runner(base_url, admin_token):
 def test_configure_runner_stateless(base_url, admin_token):
     with TemporaryDirectory() as td:
         token_file = os.path.join(base_path, "tests/resources/admin-token")
-        access_token_file = os.path.join(
-            base_path,
-            "tests/resources/access-token"
-        )
-        config_template = os.path.join(
-            base_path,
-            "tests/resources/config.template"
-        )
+        access_token_file = os.path.join(base_path, "tests/resources/access-token")
+        config_template = os.path.join(base_path, "tests/resources/config.template")
         shutil.copy(token_file, td)
         shutil.copy(config_template, td)
 
