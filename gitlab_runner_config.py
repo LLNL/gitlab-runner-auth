@@ -20,11 +20,17 @@ import socket
 import argparse
 import json
 import urllib.request
+import logging
+import stat
 from string import Formatter
 from urllib.request import Request
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
+
+LOGGER_NAME = "gitlab-runner-config"
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
+logger = logging.getLogger(LOGGER_NAME)
 
 class gitlab_client:
     base_url = ""
@@ -52,7 +58,7 @@ class gitlab_client:
             print("Error listing Gitlab repos: {reason}".format(reason=e.reason))
             sys.exit(1)
 
-    def runner_info(self, access_token, repo_id):
+    def runner_info(self, repo_id):
         try:
             url = urljoin(self.base_url, "runners/" + str(repo_id))
             request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
@@ -115,15 +121,13 @@ class gitlab_client:
             sys.exit(1)
 
     def update_runner_token(self, token, runner_type):
-        changed = False
         config = None
         if not token or not self.valid_runner_token(token):
             # no refresh endpoint...delete and re-register
             if token:
                 self.delete_runner(token)
             config = self.register_runner(runner_type, None)
-            changed = True
-        return (config, changed)
+        return config
 
     def delete_runner(self, runner_token):
         """Delete an existing runner"""
@@ -147,13 +151,25 @@ class gitlab_client:
             print("Error deleting runner: {reason}".format(reason=e.reason))
             sys.exit(1)
 
-    def list_gitlab_tags():
+    def list_gitlab_tags(self):
         filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
         runners = [
-            runner_info(self.base_url, self.access_token, r["id"])
-            for r in list_runners(self.base_url, self.access_token, filters=filters)
+            self.runner_info(r["id"])
+            for r in self.list_runners(filters)
         ]
         return set(tag for r in runners for tag in r["tag_list"])
+
+    def update_runner(self, runner_type, token=""):
+        gitlab_tags = self.list_gitlab_tags()
+        if runner_type not in gitlab_tags:
+            # no config template tags in common with Gitlab, register runners
+            # for all the tags pulled from the template.
+            return self.register_runner(
+                runner_type,
+                generate_tags(runner_type=runner_type),
+            )
+        else:
+            return self.update_runner_token(token, runner_type)
 
 def generate_tags(runner_type=""):
     """The set of tags for a host
@@ -190,6 +206,21 @@ def generate_tags(runner_type=""):
             tags.append("cobalt")
     return tags
 
+def create_client(data, clients):
+    url = data.get("url", "")
+    if url in clients:
+        return clients[url]
+
+    # TODO: tokens in the runner configs for multiple gitlab urls, separate?
+    admin_token = data.get("admin_token", "")
+    access_token = data.get("access_token", "")
+    # removing admin/access tokens for future writing out to config.toml
+    del data["admin_token"]
+    del data["access_token"]
+
+    clients[url] = gitlab_client(url, admin_token, access_token)
+    return clients[url]
+
 def read_runner(templates, path, clients):
     """Reads a runner file and generates runner configurations"""
     data_file = os.path.join(templates, path)
@@ -202,33 +233,11 @@ def read_runner(templates, path, clients):
             if name in runners:
                 print(f"Duplicate runner found for {name}")
                 sys.exit(1)
-            url = data.get("url", "")
-            # TODO: tokens in the runner configs for multiple gitlab urls, separate?
-            admin_token = data.get("admin_token", "")
-            access_token = data.get("access_token", "")
-            # removing admin/access tokens for future writing out to config.toml
-            del data["admin_token"]
-            del data["access_token"]
 
-            if url not in clients:
-                clients[url] = gitlab_client(url, admin_token, access_token)
-            client = clients[url]
-
+            client = create_client(data, clients)
             runner_type = data.get("executor", "")
-            gitlab_tags = client.list_gitlab_tags()
-            config = data
-            if runner_type not in gitlab_tags:
-                # no config template tags in common with Gitlab, register runners
-                # for all the tags pulled from the template.
-                config = client.register_runner(
-                    runner_type,
-                    generate_tags(runner_type=runner_type),
-                )
-            else:
-                token = data.get("token", "")
-                # TODO: changed no longer needed?
-                config, _ = client.update_runner_token(token, runner_type)
-            runners[name] = config
+            token = data.get("token", "")
+            runners[name] = client.update_runner(runner_type, token)
     return runners
 
 def update_runner_config(config_template, config_file, internal_config):
@@ -263,7 +272,11 @@ def update_runner_config(config_template, config_file, internal_config):
         config = template.format(**template_kwargs)
         ch.write(config)
 
-def configure_runners(prefix, templates):
+def owner_only_permissions(path):
+    st = path.stat()
+    return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
+
+def configure_runners(prefix, instance):
     """Processes a directory of runners"""
 
     # cache of gitlab clients
@@ -271,9 +284,15 @@ def configure_runners(prefix, templates):
 
     runners = {}
 
-    for filename in os.listdir(templates):
+    if not all(owner_only_permissions(d) for d in [prefix, instance]):
+        logger.error(
+            "check permissions on {prefix} or {instance}, too permissive, exiting".format(
+            prefix=prefix, instance=instance))
+        sys.exit(1)
+
+    for filename in os.listdir(instance):
         if filename.endswith(".toml"):
-            runners.update(read_runner(templates, filename, clients))
+            runners.update(read_runner(instance, filename, clients))
 
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
@@ -288,10 +307,10 @@ if __name__ == "__main__":
         help="The runner config directory prefix"
     )
     parser.add_argument(
-        "-t",
-        "--templates",
+        "-i",
+        "--instance",
         default="/etc/gitlab-runner/main",
-        help="The runner config template tomls directory"
+        help="The config template directory for this instance under the configuration directory "
     )
     args = parser.parse_args()
-    configure_runners(args.prefix, args.templates)
+    configure_runners(args.prefix, args.instance)
