@@ -42,61 +42,65 @@ class gitlab_client:
         self.admin_token = admin_token
         self.access_token = access_token
 
+    def list_runners_request(self, query):
+        url = urljoin(self.base_url, "runners/all" + query)
+        request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
+        return json.load(urllib.request.urlopen(request))
+
     def list_runners(self, filters=None):
         try:
             query = ""
             if filters:
                 query = "?" + urlencode(filters)
 
-            url = urljoin(self.base_url, "runners/all" + query)
-            request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
-            return json.load(urllib.request.urlopen(request))
-        except JSONDecodeError:
-            print("Failed parsing request data JSON")
-            sys.exit(1)
+            return self.list_runners_request(query)
+        except JSONDecodeError as e:
+            raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
-            print("Error listing Gitlab repos: {reason}".format(reason=e.reason))
-            sys.exit(1)
+            raise RuntimeError("Error listing Gitlab repos: {reason}".format(reason=e.reason)) from e
 
     def runner_info(self, repo_id):
         try:
             url = urljoin(self.base_url, "runners/" + str(repo_id))
             request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
             return json.load(urllib.request.urlopen(request))
-        except JSONDecodeError:
-            print("Failed parsing request data JSON")
-            sys.exit(1)
+        except JSONDecodeError as e:
+            raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
-            print(
-                "Error while requesting repo info for repo {repo}: {reason}".format(
-                    repo=repo_id, reason=e.reason
-                )
-            )
-            sys.exit(1)
+            cause = "Error while requesting repo info for repo {repo}: {reason}".format(
+                    repo=repo_id, reason=e.reason)
+            raise RuntimeError(cause) from e
+
+    def valid_runner_token_request(self, data):
+        url = urljoin(self.base_url, "runners/verify")
+        request = Request(url, data=data.encode(), method="POST")
+        urllib.request.urlopen(request)
 
     def valid_runner_token(self, token):
         """Test whether or not a runner token is valid"""
 
         try:
-            url = urljoin(self.base_url, "runners/verify")
             data = urlencode({"token": token})
-
-            request = Request(url, data=data.encode(), method="POST")
-            urllib.request.urlopen(request)
+            self.valid_runner_token_request(data)
             return True
         except HTTPError as e:
             if e.code == 403:
                 return False
             else:
-                print("Error while validating token: {}".format(e.reason))
-                sys.exit(1)
+                raise RuntimeError("Error while validating token: {}".format(e.reason))
+
+    def register_runner_request(self, data):
+            url = urljoin(self.base_url, "runners")
+            request = Request(url, data=data.encode(), method="POST")
+            response = urllib.request.urlopen(request)
+            if response.getcode() == 201:
+                return json.load(response)
+            else:
+                return None
 
     def register_runner(self, runner_type, tags):
         """Registers a runner and returns its info"""
-
         try:
-            # the first tag is always the hostname
-            url = urljoin(self.base_url, "runners")
             data = urlencode(
                 {
                     "token": self.admin_token,
@@ -105,51 +109,45 @@ class gitlab_client:
                 }
             )
 
-            request = Request(url, data=data.encode(), method="POST")
-            response = urllib.request.urlopen(request)
-            if response.getcode() == 201:
-                return json.load(response)
-            else:
-                print("Registration for {runner_type} failed".format(runner_type))
-                sys.exit(1)
+            runner_data = self.register_runner_request(data)
+            if runner_data == None:
+                raise RuntimeError("Registration for {runner_type} failed".format(runner_type))
         except HTTPError as e:
-            print(
-                "Error registering runner {runner} with tags {tags}: {reason}".format(
-                    runner=runner_type, tags=",".join(tags), reason=e.reason
-                )
-            )
-            sys.exit(1)
+            cause = "Error registering runner {runner} with tags {tags}: {reason}".format(
+                    runner=runner_type, tags=",".join(tags), reason=e.reason)
+            raise RuntimeError(cause) from e
 
     def update_runner_token(self, token, runner_type):
-        config = None
         if not token or not self.valid_runner_token(token):
             # no refresh endpoint...delete and re-register
             if token:
                 self.delete_runner(token)
-            config = self.register_runner(runner_type, None)
-        return config
+            return self.register_runner(runner_type, None)
+        else:
+            return None
+
+    def delete_runner_request(self, data):
+        url = urljoin(self.base_url, "runners")
+        request = Request(url, data=data.encode(), method="DELETE")
+        return urllib.request.urlopen(request)
 
     def delete_runner(self, runner_token):
         """Delete an existing runner"""
 
         try:
-            url = urljoin(self.base_url, "runners")
             data = urlencode(
                 {
                     "token": runner_token,
                 }
             )
 
-            request = Request(url, data=data.encode(), method="DELETE")
-            response = urllib.request.urlopen(request)
+            response = self.delete_runner_request(data)
             if response.getcode() == 204:
                 return True
             else:
-                print("Deleting runner with id failed")
-                sys.exit(1)
+                raise RuntimeError("Deleting runner with id failed")
         except HTTPError as e:
-            print("Error deleting runner: {reason}".format(reason=e.reason))
-            sys.exit(1)
+            raise RuntimeError("Error deleting runner: {reason}".format(reason=e.reason)) from e
 
     def list_gitlab_tags(self):
         filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
@@ -231,7 +229,7 @@ def read_runner(templates, path, clients):
             data = data or {}
             name = data.get("name", "")
             if name in runners:
-                print(f"Duplicate runner found for {name}")
+                print("Duplicate runner found for {name}")
                 sys.exit(1)
 
             client = create_client(data, clients)
