@@ -30,10 +30,35 @@ from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
 
-hostname = socket.gethostname()
+HOSTNAME = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
+
+
+def host_tags():
+    return [HOSTNAME, re.sub(r"\d", "", HOSTNAME)]
+
+
+def generate_tags(executor_type=""):
+    """The set of tags for a host
+
+    Minimally, this is the system hostname, but should include things like OS,
+    architecture, GPU availability, etc.
+
+    These tags are specified by runner configs and used by CI specs to run jobs
+    on the appropriate host.
+    """
+
+    tags = host_tags()
+    if executor_type == "batch":
+        if which("bsub"):
+            tags.append("lsf")
+        elif which("salloc"):
+            tags.append("slurm")
+        elif which("cqsub"):
+            tags.append("cobalt")
+    return tags
 
 
 class url_requester:
@@ -190,28 +215,6 @@ class gitlab_client:
             return self.update_runner_token(token, runner_type)
 
 
-def generate_tags(executor_type=""):
-    """The set of tags for a host
-
-    Minimally, this is the system hostname, but should include things like OS,
-    architecture, GPU availability, etc.
-
-    These tags are specified by runner configs and used by CI specs to run jobs
-    on the appropriate host.
-    """
-
-    # also tag with the generic cluster name by removing any trailing numbers
-    tags = [hostname, re.sub(r"\d", "", hostname)]
-    if executor_type == "batch":
-        if which("bsub"):
-            tags.append("lsf")
-        elif which("salloc"):
-            tags.append("slurm")
-        elif which("cqsub"):
-            tags.append("cobalt")
-    return tags
-
-
 def create_client(data, clients):
     url = data.get("url", "")
     if url in clients:
@@ -269,7 +272,7 @@ class Executor:
             executor = c["executor"]
             c["tags"] = generate_tags(executor_type=executor)
             c["name"] = "{host} {executor} Runner".format(
-                host=hostname, executor=executor
+                host=HOSTNAME, executor=executor
             )
 
     def missing_token(self):
