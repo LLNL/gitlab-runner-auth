@@ -19,22 +19,28 @@ import sys
 import socket
 import argparse
 import json
+import toml
 import urllib.request
 import logging
 import stat
+from shutil import which
 from string import Formatter
 from urllib.request import Request
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
 
+hostname = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
+
 class url_requester:
     def request(self, request):
         return urllib.request.urlopen(request)
+
+
 class gitlab_client:
     base_url = ""
     admin_token = ""
@@ -61,7 +67,9 @@ class gitlab_client:
         except JSONDecodeError as e:
             raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
-            raise RuntimeError("Error listing Gitlab repos: {reason}".format(reason=e.reason)) from e
+            raise RuntimeError(
+                "Error listing Gitlab repos: {reason}".format(reason=e.reason)
+            ) from e
 
     def runner_info(self, repo_id):
         try:
@@ -72,7 +80,8 @@ class gitlab_client:
             raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
             cause = "Error while requesting repo info for repo {repo}: {reason}".format(
-                    repo=repo_id, reason=e.reason)
+                repo=repo_id, reason=e.reason
+            )
             raise RuntimeError(cause) from e
 
     def valid_runner_token_request(self, data):
@@ -115,11 +124,16 @@ class gitlab_client:
 
             runner_data = self.register_runner_request(data)
             if runner_data == None:
-                raise RuntimeError("Registration for {runner} failed".format(runner=runner_type))
+                raise RuntimeError(
+                    "Registration for {runner} failed".format(runner=runner_type)
+                )
             return runner_data
         except HTTPError as e:
-            cause = "Error registering runner {runner} with tags {tags}: {reason}".format(
-                    runner=runner_type, tags=",".join(tags), reason=e.reason)
+            cause = (
+                "Error registering runner {runner} with tags {tags}: {reason}".format(
+                    runner=runner_type, tags=",".join(tags), reason=e.reason
+                )
+            )
             raise RuntimeError(cause) from e
 
     def update_runner_token(self, token, runner_type):
@@ -127,7 +141,9 @@ class gitlab_client:
             # no refresh endpoint...delete and re-register
             if token:
                 self.delete_runner(token)
-            return self.register_runner(runner_type, generate_tags(runner_type=runner_type))
+            return self.register_runner(
+                runner_type, generate_tags(runner_type=runner_type)
+            )
         else:
             return None
 
@@ -152,14 +168,13 @@ class gitlab_client:
             else:
                 raise RuntimeError("Deleting runner failed")
         except HTTPError as e:
-            raise RuntimeError("Error deleting runner: {reason}".format(reason=e.reason)) from e
+            raise RuntimeError(
+                "Error deleting runner: {reason}".format(reason=e.reason)
+            ) from e
 
     def list_gitlab_tags(self):
         filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
-        runners = [
-            self.runner_info(r["id"])
-            for r in self.list_runners(filters)
-        ]
+        runners = [self.runner_info(r["id"]) for r in self.list_runners(filters)]
         return set(tag for r in runners for tag in r["tag_list"])
 
     def update_runner(self, runner_type, token=""):
@@ -174,7 +189,8 @@ class gitlab_client:
         else:
             return self.update_runner_token(token, runner_type)
 
-def generate_tags(runner_type=""):
+
+def generate_tags(executor_type=""):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -184,23 +200,9 @@ def generate_tags(runner_type=""):
     on the appropriate host.
     """
 
-    # the hostname is _required_ to make this script work, everything else
-    # is extra (as far as this script is concerned)
-    hostname = socket.gethostname()
-
     # also tag with the generic cluster name by removing any trailing numbers
     tags = [hostname, re.sub(r"\d", "", hostname)]
-    if runner_type == "batch":
-
-        def which(cmd):
-            all_paths = (
-                os.path.join(path, cmd) for path in os.environ["PATH"].split(os.pathsep)
-            )
-
-            return any(
-                os.access(path, os.X_OK) and os.path.isfile(path) for path in all_paths
-            )
-
+    if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
         elif which("salloc"):
@@ -208,6 +210,7 @@ def generate_tags(runner_type=""):
         elif which("cqsub"):
             tags.append("cobalt")
     return tags
+
 
 def create_client(data, clients):
     url = data.get("url", "")
@@ -223,6 +226,7 @@ def create_client(data, clients):
 
     clients[url] = gitlab_client(url, admin_token, access_token)
     return clients[url]
+
 
 def read_runner(templates, path, clients):
     """Reads a runner file and generates runner configurations"""
@@ -242,6 +246,49 @@ def read_runner(templates, path, clients):
             token = data.get("token", "")
             runners[name] = client.update_runner(runner_type, token)
     return runners
+
+
+class Runner:
+    def __init__(self, config, executor_configs):
+        self.config = config
+        self.executor_configs = executor_configs
+
+    def to_toml(self):
+        config = dict(self.config)
+        config["runners"] = self.executor_configs
+        return toml.dump(config)
+
+
+class Executor:
+    def __init__(self, configs):
+        self.configs = configs
+        self.normalize()
+
+    def normalize(self):
+        for c in self.configs:
+            executor = c["executor"]
+            c["tags"] = generate_tags(executor_type=executor)
+            c["name"] = "{host} {executor} Runner".format(
+                host=hostname, executor=executor
+            )
+
+    def missing_token(self):
+        return [c for c in self.configs if not c.get("token")]
+
+    def missing_required_config(self):
+        def required_keys(c):
+            return all(
+                [
+                    c.get("name"),
+                    c.get("token"),
+                    c.get("url"),
+                    c.get("executor"),
+                    c.get("tags"),
+                ]
+            )
+
+        return [c for c in self.configs if not required_keys(c)]
+
 
 def update_runner_config(config_template, config_file, internal_config):
     """Using data from config.json, write the config.toml used by the runner
@@ -275,9 +322,11 @@ def update_runner_config(config_template, config_file, internal_config):
         config = template.format(**template_kwargs)
         ch.write(config)
 
+
 def owner_only_permissions(path):
     st = path.stat()
     return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
+
 
 def configure_runners(prefix, instance):
     """Processes a directory of runners"""
@@ -290,7 +339,9 @@ def configure_runners(prefix, instance):
     if not all(owner_only_permissions(d) for d in [prefix, instance]):
         logger.error(
             "check permissions on {prefix} or {instance}, too permissive, exiting".format(
-            prefix=prefix, instance=instance))
+                prefix=prefix, instance=instance
+            )
+        )
         sys.exit(1)
 
     for filename in os.listdir(instance):
@@ -301,19 +352,20 @@ def configure_runners(prefix, instance):
     config_template = os.path.join(prefix, "config.template")
     update_runner_config(config_template, config_file, runners)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="On the fly runner config")
     parser.add_argument(
         "-p",
         "--prefix",
         default="/etc/gitlab-runner",
-        help="The runner config directory prefix"
+        help="The runner config directory prefix",
     )
     parser.add_argument(
         "-i",
         "--instance",
         default="/etc/gitlab-runner/main",
-        help="The config template directory for this instance under the configuration directory "
+        help="The config template directory for this instance under the configuration directory ",
     )
     args = parser.parse_args()
     configure_runners(args.prefix, args.instance)
