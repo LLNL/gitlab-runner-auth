@@ -28,7 +28,11 @@ from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
 
-hostname = socket.gethostname()
+HOSTNAME = socket.gethostname()
+
+
+def host_tags():
+    return [HOSTNAME, re.sub(r"\d", "", HOSTNAME)]
 
 
 def generate_tags(executor_type=""):
@@ -41,8 +45,7 @@ def generate_tags(executor_type=""):
     on the appropriate host.
     """
 
-    # also tag with the generic cluster name by removing any trailing numbers
-    tags = [hostname, re.sub(r"\d", "", hostname)]
+    tags = host_tags()
     if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
@@ -74,7 +77,7 @@ class Executor:
             executor = c["executor"]
             c["tags"] = generate_tags(executor_type=executor)
             c["name"] = "{host} {executor} Runner".format(
-                host=hostname, executor=executor
+                host=HOSTNAME, executor=executor
             )
 
     def missing_token(self):
