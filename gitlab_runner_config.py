@@ -19,15 +19,19 @@ import sys
 import socket
 import argparse
 import json
+import toml
 import urllib.request
+from shutil import which
 from string import Formatter
 from urllib.request import Request
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
 
+hostname = socket.gethostname()
 
-def generate_tags(runner_type=""):
+
+def generate_tags(executor_type=""):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -37,23 +41,9 @@ def generate_tags(runner_type=""):
     on the appropriate host.
     """
 
-    # the hostname is _required_ to make this script work, everything else
-    # is extra (as far as this script is concerned)
-    hostname = socket.gethostname()
-
     # also tag with the generic cluster name by removing any trailing numbers
     tags = [hostname, re.sub(r"\d", "", hostname)]
-    if runner_type == "batch":
-
-        def which(cmd):
-            all_paths = (
-                os.path.join(path, cmd) for path in os.environ["PATH"].split(os.pathsep)
-            )
-
-            return any(
-                os.access(path, os.X_OK) and os.path.isfile(path) for path in all_paths
-            )
-
+    if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
         elif which("salloc"):
@@ -61,6 +51,48 @@ def generate_tags(runner_type=""):
         elif which("cqsub"):
             tags.append("cobalt")
     return tags
+
+
+class Runner:
+    def __init__(self, config, executor_configs):
+        self.config = config
+        self.executor_configs = executor_configs
+
+    def to_toml(self):
+        config = dict(self.config)
+        config["runners"] = self.executor_configs
+        return toml.dump(config)
+
+
+class Executor:
+    def __init__(self, configs):
+        self.configs = configs
+        self.normalize()
+
+    def normalize(self):
+        for c in self.configs:
+            executor = c["executor"]
+            c["tags"] = generate_tags(executor_type=executor)
+            c["name"] = "{host} {executor} Runner".format(
+                host=hostname, executor=executor
+            )
+
+    def missing_token(self):
+        return [c for c in self.configs if not c.get("token")]
+
+    def missing_required_config(self):
+        def required_keys(c):
+            return all(
+                [
+                    c.get("name"),
+                    c.get("token"),
+                    c.get("url"),
+                    c.get("executor"),
+                    c.get("tags"),
+                ]
+            )
+
+        return [c for c in self.configs if not required_keys(c)]
 
 
 def list_runners(base_url, access_token, filters=None):

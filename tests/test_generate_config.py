@@ -23,54 +23,37 @@ from pytest import fixture
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
+    Runner,
+    Executor,
     generate_tags,
-    list_runners,
-    runner_info,
-    valid_runner_token,
-    register_runner,
-    delete_runner,
-    update_runner_config,
-    configure_runner,
 )
 
 
 base_path = os.getcwd()
 
 
-@fixture(scope="session")
-def base_url():
-    return "http://localhost:8080/api/v4/"
+@fixture
+def executor_configs():
+    configs = []
+    url_tmpl = "https://example.com/{}"
+    executor_tmpl = "{}-executor"
+    for name in ["foo", "bar"]:
+        configs.append(
+            {"url": url_tmpl.format(name), "executor": executor_tmpl.format(name)}
+        )
+    return configs
 
 
-@fixture(scope="session")
-def admin_token():
-    with open(os.path.join(base_path, "tests/resources/admin-token")) as fh:
-        return fh.read()
-
-
-@fixture(scope="session")
-def access_token():
-    with open(os.path.join(base_path, "tests/resources/access-token")) as fh:
-        return fh.read()
-
-
-@fixture(scope="module")
-def runner_data(base_url, admin_token, access_token):
-    data = register_runner(base_url, admin_token, "test", generate_tags())
-    yield data
-    all_runner_info = (
-        runner_info(base_url, access_token, r["id"])
-        for r in list_runners(base_url, access_token)
-    )
-    for runner in all_runner_info:
-        delete_runner(base_url, runner["token"])
+@fixture
+def executor(executor_configs):
+    yield Executor(executor_configs)
 
 
 def test_generate_tags():
     tags = generate_tags()
     hostname = socket.gethostname()
-    assert hostname == tags[0]
-    assert re.sub(r"\d", "", hostname) == tags[1]
+    assert hostname in tags
+    assert re.sub(r"\d", "", hostname) in tags
 
     # test finding a resource manager
     with TemporaryDirectory() as td:
@@ -85,92 +68,24 @@ def test_generate_tags():
         def get_tags(exe):
             Path(exe).touch()
             os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(runner_type="batch")
+            tags = generate_tags(executor_type="batch")
             os.unlink(exe)
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
 
 
-def test_valid_runner_token(base_url, runner_data):
-    assert valid_runner_token(base_url, runner_data["token"])
+class TestExecutorConfigs:
+    def test_normalize(self, executor):
+        executor.normalize()
+        assert all(c.get("name") for c in executor.configs)
+        assert all(c.get("tags") for c in executor.configs)
 
+    def test_missing_token(self, executor):
+        assert len(executor.missing_token()) == len(executor.configs)
+        for e in executor.missing_token():
+            e["token"] = "token"
+        assert len(executor.missing_token()) == 0
 
-def test_update_runner_config(runner_data):
-    with TemporaryDirectory() as td:
-        config_file = os.path.join(td, "config.toml")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        data = {
-            "shell": runner_data,
-            "batch": runner_data,
-        }
-        update_runner_config(config_template, config_file, data)
-
-        with open(config_file) as fh:
-            runner_config = toml.load(fh)
-            assert all(
-                r["token"] == runner_data["token"] for r in runner_config["runners"]
-            )
-
-
-# end to end
-
-
-def test_configure_runner(base_url, admin_token):
-    with TemporaryDirectory() as td:
-        access_token_file = os.path.join(base_path, "tests/resources/access-token")
-        token_file = os.path.join(base_path, "tests/resources/admin-token")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        shutil.copy(access_token_file, td)
-        shutil.copy(token_file, td)
-        shutil.copy(config_template, td)
-
-        configure_runner(td, base_url)
-
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh)
-
-        # running twice with a config file in existence will traverse another
-        # code path
-        configure_runner(td, base_url)
-
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh)
-
-        # originally configured with shell and batch runners, lets make
-        # sure that data is in `runner-data.json`
-        with open(os.path.join(td, "runner-data.json")) as fh:
-            runner_data = json.load(fh)
-            assert all(r_type in runner_data for r_type in ["shell", "batch"])
-
-
-def test_configure_runner_stateless(base_url, admin_token):
-    with TemporaryDirectory() as td:
-        token_file = os.path.join(base_path, "tests/resources/admin-token")
-        access_token_file = os.path.join(base_path, "tests/resources/access-token")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        shutil.copy(token_file, td)
-        shutil.copy(config_template, td)
-
-        # fails without an access token
-        with pytest.raises(SystemExit):
-            configure_runner(td, base_url, stateless=True)
-
-        shutil.copy(access_token_file, td)
-        configure_runner(td, base_url, stateless=True)
-
-        with open(os.path.join(td, "config.toml")) as fh:
-            config = toml.load(fh)
-            assert config
-            assert len(config["runners"]) == 2
-            assert all(r["token"] for r in config["runners"])
-
-        # run a second time, we should get the config.toml back
-        # and the same runner tokens
-        os.unlink(os.path.join(td, "config.toml"))
-        configure_runner(td, base_url, stateless=True)
-
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh) == config
-            assert len(config["runners"]) == 2
-            assert all(r["token"] for r in config["runners"])
+    def test_missing_required_config(self, executor):
+        assert len(executor.missing_required_config()) == len(executor.configs)
