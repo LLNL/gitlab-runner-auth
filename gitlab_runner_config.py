@@ -32,10 +32,14 @@ LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
+class url_requester:
+    def request(self, request):
+        return urllib.request.urlopen(request)
 class gitlab_client:
     base_url = ""
     admin_token = ""
     access_token = ""
+    requester = url_requester()
 
     def __init__(self, url, admin_token, access_token):
         self.base_url = url
@@ -45,7 +49,7 @@ class gitlab_client:
     def list_runners_request(self, query):
         url = urljoin(self.base_url, "runners/all" + query)
         request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
-        return json.load(urllib.request.urlopen(request))
+        return json.load(self.requester.request(request))
 
     def list_runners(self, filters=None):
         try:
@@ -63,7 +67,7 @@ class gitlab_client:
         try:
             url = urljoin(self.base_url, "runners/" + str(repo_id))
             request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
-            return json.load(urllib.request.urlopen(request))
+            return json.load(self.requester.request(request))
         except JSONDecodeError as e:
             raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
@@ -74,7 +78,7 @@ class gitlab_client:
     def valid_runner_token_request(self, data):
         url = urljoin(self.base_url, "runners/verify")
         request = Request(url, data=data.encode(), method="POST")
-        urllib.request.urlopen(request)
+        self.requester.request(request)
 
     def valid_runner_token(self, token):
         """Test whether or not a runner token is valid"""
@@ -92,7 +96,7 @@ class gitlab_client:
     def register_runner_request(self, data):
             url = urljoin(self.base_url, "runners")
             request = Request(url, data=data.encode(), method="POST")
-            response = urllib.request.urlopen(request)
+            response = self.requester.request(request)
             if response.getcode() == 201:
                 return json.load(response)
             else:
@@ -129,7 +133,7 @@ class gitlab_client:
     def delete_runner_request(self, data):
         url = urljoin(self.base_url, "runners")
         request = Request(url, data=data.encode(), method="DELETE")
-        return urllib.request.urlopen(request)
+        return self.requester.request(request)
 
     def delete_runner(self, runner_token):
         """Delete an existing runner"""
