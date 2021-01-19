@@ -94,13 +94,13 @@ class gitlab_client:
                 raise RuntimeError("Error while validating token: {}".format(e.reason))
 
     def register_runner_request(self, data):
-            url = urljoin(self.base_url, "runners")
-            request = Request(url, data=data.encode(), method="POST")
-            response = self.requester.request(request)
-            if response.getcode() == 201:
-                return json.load(response)
-            else:
-                return None
+        url = urljoin(self.base_url, "runners")
+        request = Request(url, data=data.encode(), method="POST")
+        response = self.requester.request(request)
+        if response.getcode() == 201:
+            return json.load(response)
+        else:
+            return None
 
     def register_runner(self, runner_type, tags):
         """Registers a runner and returns its info"""
@@ -115,7 +115,8 @@ class gitlab_client:
 
             runner_data = self.register_runner_request(data)
             if runner_data == None:
-                raise RuntimeError("Registration for {runner_type} failed".format(runner_type))
+                raise RuntimeError("Registration for {runner} failed".format(runner=runner_type))
+            return runner_data
         except HTTPError as e:
             cause = "Error registering runner {runner} with tags {tags}: {reason}".format(
                     runner=runner_type, tags=",".join(tags), reason=e.reason)
@@ -126,7 +127,7 @@ class gitlab_client:
             # no refresh endpoint...delete and re-register
             if token:
                 self.delete_runner(token)
-            return self.register_runner(runner_type, None)
+            return self.register_runner(runner_type, generate_tags(runner_type=runner_type))
         else:
             return None
 
@@ -149,7 +150,7 @@ class gitlab_client:
             if response.getcode() == 204:
                 return True
             else:
-                raise RuntimeError("Deleting runner with id failed")
+                raise RuntimeError("Deleting runner failed")
         except HTTPError as e:
             raise RuntimeError("Error deleting runner: {reason}".format(reason=e.reason)) from e
 
