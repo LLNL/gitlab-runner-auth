@@ -20,12 +20,159 @@ import socket
 import argparse
 import json
 import urllib.request
+import logging
+import stat
 from string import Formatter
 from urllib.request import Request
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
 from json import JSONDecodeError
 
+LOGGER_NAME = "gitlab-runner-config"
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
+logger = logging.getLogger(LOGGER_NAME)
+
+class url_requester:
+    def request(self, request):
+        return urllib.request.urlopen(request)
+class gitlab_client:
+    base_url = ""
+    admin_token = ""
+    access_token = ""
+    requester = url_requester()
+
+    def __init__(self, url, admin_token, access_token):
+        self.base_url = url
+        self.admin_token = admin_token
+        self.access_token = access_token
+
+    def list_runners_request(self, query):
+        url = urljoin(self.base_url, "runners/all" + query)
+        request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
+        return json.load(self.requester.request(request))
+
+    def list_runners(self, filters=None):
+        try:
+            query = ""
+            if filters:
+                query = "?" + urlencode(filters)
+
+            return self.list_runners_request(query)
+        except JSONDecodeError as e:
+            raise RuntimeError("Failed parsing request data JSON") from e
+        except HTTPError as e:
+            raise RuntimeError("Error listing Gitlab repos: {reason}".format(reason=e.reason)) from e
+
+    def runner_info(self, repo_id):
+        try:
+            url = urljoin(self.base_url, "runners/" + str(repo_id))
+            request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
+            return json.load(self.requester.request(request))
+        except JSONDecodeError as e:
+            raise RuntimeError("Failed parsing request data JSON") from e
+        except HTTPError as e:
+            cause = "Error while requesting repo info for repo {repo}: {reason}".format(
+                    repo=repo_id, reason=e.reason)
+            raise RuntimeError(cause) from e
+
+    def valid_runner_token_request(self, data):
+        url = urljoin(self.base_url, "runners/verify")
+        request = Request(url, data=data.encode(), method="POST")
+        self.requester.request(request)
+
+    def valid_runner_token(self, token):
+        """Test whether or not a runner token is valid"""
+
+        try:
+            data = urlencode({"token": token})
+            self.valid_runner_token_request(data)
+            return True
+        except HTTPError as e:
+            if e.code == 403:
+                return False
+            else:
+                raise RuntimeError("Error while validating token: {}".format(e.reason))
+
+    def register_runner_request(self, data):
+        url = urljoin(self.base_url, "runners")
+        request = Request(url, data=data.encode(), method="POST")
+        response = self.requester.request(request)
+        if response.getcode() == 201:
+            return json.load(response)
+        else:
+            return None
+
+    def register_runner(self, runner_type, tags):
+        """Registers a runner and returns its info"""
+        try:
+            data = urlencode(
+                {
+                    "token": self.admin_token,
+                    "description": tags[0] + "-" + runner_type,
+                    "tag_list": ",".join(tags + [runner_type]),
+                }
+            )
+
+            runner_data = self.register_runner_request(data)
+            if runner_data == None:
+                raise RuntimeError("Registration for {runner} failed".format(runner=runner_type))
+            return runner_data
+        except HTTPError as e:
+            cause = "Error registering runner {runner} with tags {tags}: {reason}".format(
+                    runner=runner_type, tags=",".join(tags), reason=e.reason)
+            raise RuntimeError(cause) from e
+
+    def update_runner_token(self, token, runner_type):
+        if not token or not self.valid_runner_token(token):
+            # no refresh endpoint...delete and re-register
+            if token:
+                self.delete_runner(token)
+            return self.register_runner(runner_type, generate_tags(runner_type=runner_type))
+        else:
+            return None
+
+    def delete_runner_request(self, data):
+        url = urljoin(self.base_url, "runners")
+        request = Request(url, data=data.encode(), method="DELETE")
+        return self.requester.request(request)
+
+    def delete_runner(self, runner_token):
+        """Delete an existing runner"""
+
+        try:
+            data = urlencode(
+                {
+                    "token": runner_token,
+                }
+            )
+
+            response = self.delete_runner_request(data)
+            if response.getcode() == 204:
+                return True
+            else:
+                raise RuntimeError("Deleting runner failed")
+        except HTTPError as e:
+            raise RuntimeError("Error deleting runner: {reason}".format(reason=e.reason)) from e
+
+    def list_gitlab_tags(self):
+        filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
+        runners = [
+            self.runner_info(r["id"])
+            for r in self.list_runners(filters)
+        ]
+        return set(tag for r in runners for tag in r["tag_list"])
+
+    def update_runner(self, runner_type, token=""):
+        gitlab_tags = self.list_gitlab_tags()
+        if runner_type not in gitlab_tags:
+            # no config template tags in common with Gitlab, register runners
+            # for all the tags pulled from the template.
+            return self.register_runner(
+                runner_type,
+                generate_tags(runner_type=runner_type),
+            )
+        else:
+            return self.update_runner_token(token, runner_type)
 
 def generate_tags(runner_type=""):
     """The set of tags for a host
@@ -62,111 +209,39 @@ def generate_tags(runner_type=""):
             tags.append("cobalt")
     return tags
 
+def create_client(data, clients):
+    url = data.get("url", "")
+    if url in clients:
+        return clients[url]
 
-def list_runners(base_url, access_token, filters=None):
-    try:
-        query = ""
-        if filters:
-            query = "?" + urlencode(filters)
+    # TODO: tokens in the runner configs for multiple gitlab urls, separate?
+    admin_token = data.get("admin_token", "")
+    access_token = data.get("access_token", "")
+    # removing admin/access tokens for future writing out to config.toml
+    del data["admin_token"]
+    del data["access_token"]
 
-        url = urljoin(base_url, "runners/all" + query)
-        request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-        return json.load(urllib.request.urlopen(request))
-    except JSONDecodeError:
-        print("Failed parsing request data JSON")
-        sys.exit(1)
-    except HTTPError as e:
-        print("Error listing Gitlab repos: {reason}".format(reason=e.reason))
-        sys.exit(1)
+    clients[url] = gitlab_client(url, admin_token, access_token)
+    return clients[url]
 
+def read_runner(templates, path, clients):
+    """Reads a runner file and generates runner configurations"""
+    data_file = os.path.join(templates, path)
+    runners = {}
+    with open(data_file, "r") as fh:
+        runner_config = json.load(fh)
+        for runner_type, data in runner_config.items():
+            data = data or {}
+            name = data.get("name", "")
+            if name in runners:
+                print("Duplicate runner found for {name}")
+                sys.exit(1)
 
-def runner_info(base_url, access_token, repo_id):
-    try:
-        url = urljoin(base_url, "runners/" + str(repo_id))
-        request = Request(url, headers={"PRIVATE-TOKEN": access_token})
-        return json.load(urllib.request.urlopen(request))
-    except JSONDecodeError:
-        print("Failed parsing request data JSON")
-        sys.exit(1)
-    except HTTPError as e:
-        print(
-            "Error while requesting repo info for repo {repo}: {reason}".format(
-                repo=repo_id, reason=e.reason
-            )
-        )
-        sys.exit(1)
-
-
-def valid_runner_token(base_url, token):
-    """Test whether or not a runner token is valid"""
-
-    try:
-        url = urljoin(base_url, "runners/verify")
-        data = urlencode({"token": token})
-
-        request = Request(url, data=data.encode(), method="POST")
-        urllib.request.urlopen(request)
-        return True
-    except HTTPError as e:
-        if e.code == 403:
-            return False
-        else:
-            print("Error while validating token: {}".format(e.reason))
-            sys.exit(1)
-
-
-def register_runner(base_url, admin_token, runner_type, tags):
-    """Registers a runner and returns its info"""
-
-    try:
-        # the first tag is always the hostname
-        url = urljoin(base_url, "runners")
-        data = urlencode(
-            {
-                "token": admin_token,
-                "description": tags[0] + "-" + runner_type,
-                "tag_list": ",".join(tags + [runner_type]),
-            }
-        )
-
-        request = Request(url, data=data.encode(), method="POST")
-        response = urllib.request.urlopen(request)
-        if response.getcode() == 201:
-            return json.load(response)
-        else:
-            print("Registration for {runner_type} failed".format(runner_type))
-            sys.exit(1)
-    except HTTPError as e:
-        print(
-            "Error registering runner {runner} with tags {tags}: {reason}".format(
-                runner=runner_type, tags=",".join(tags), reason=e.reason
-            )
-        )
-        sys.exit(1)
-
-
-def delete_runner(base_url, runner_token):
-    """Delete an existing runner"""
-
-    try:
-        url = urljoin(base_url, "runners")
-        data = urlencode(
-            {
-                "token": runner_token,
-            }
-        )
-
-        request = Request(url, data=data.encode(), method="DELETE")
-        response = urllib.request.urlopen(request)
-        if response.getcode() == 204:
-            return True
-        else:
-            print("Deleting runner with id failed")
-            sys.exit(1)
-    except HTTPError as e:
-        print("Error deleting runner: {reason}".format(reason=e.reason))
-        sys.exit(1)
-
+            client = create_client(data, clients)
+            runner_type = data.get("executor", "")
+            token = data.get("token", "")
+            runners[name] = client.update_runner(runner_type, token)
+    return runners
 
 def update_runner_config(config_template, config_file, internal_config):
     """Using data from config.json, write the config.toml used by the runner
@@ -200,95 +275,31 @@ def update_runner_config(config_template, config_file, internal_config):
         config = template.format(**template_kwargs)
         ch.write(config)
 
+def owner_only_permissions(path):
+    st = path.stat()
+    return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
 
-def configure_runner(prefix, api_url, stateless=False):
-    """Takes a config template and substitutes runner tokens"""
+def configure_runners(prefix, instance):
+    """Processes a directory of runners"""
 
-    runner_config = {}
+    # cache of gitlab clients
+    clients = {}
+
+    runners = {}
+
+    if not all(owner_only_permissions(d) for d in [prefix, instance]):
+        logger.error(
+            "check permissions on {prefix} or {instance}, too permissive, exiting".format(
+            prefix=prefix, instance=instance))
+        sys.exit(1)
+
+    for filename in os.listdir(instance):
+        if filename.endswith(".toml"):
+            runners.update(read_runner(instance, filename, clients))
+
     config_file = os.path.join(prefix, "config.toml")
     config_template = os.path.join(prefix, "config.template")
-
-    # ensure trailing '/' for urljoin
-    if api_url[:-1] != "/":
-        api_url += "/"
-
-    with open(os.path.join(prefix, "admin-token")) as fh:
-        admin_token = fh.read()
-
-    if stateless:
-        with open(config_template) as fh:
-            template = fh.read()
-        try:
-            with open(os.path.join(prefix, "access-token")) as fh:
-                access_token = fh.read()
-        except FileNotFoundError:
-            print("A personal access token is required for stateless mode")
-            sys.exit(1)
-        filters = {"scope": "shared", "tag_list": ",".join([socket.gethostname()])}
-        runner_types = set(
-            token[1]
-            for token in Formatter().parse(template)
-            if token[1] != "hostname" and token[1] is not None
-        )
-        runners = [
-            runner_info(api_url, access_token, r["id"])
-            for r in list_runners(api_url, access_token, filters=filters)
-        ]
-        gitlab_tags = set(tag for r in runners for tag in r["tag_list"])
-        if len(runner_types & gitlab_tags) == 0:
-            # no config template tags in common with Gitlab, register runners
-            # for all the tags pulled from the template.
-            for runner_type in iter(runner_types):
-                runner_config[runner_type] = register_runner(
-                    api_url,
-                    admin_token,
-                    runner_type,
-                    generate_tags(runner_type=runner_type),
-                )
-        else:
-            for runner in runners:
-                try:
-                    runner_type = (runner_types & set(runner["tag_list"])).pop()
-                    runner_config[runner_type] = runner
-                except KeyError:
-                    # we may have picked up a runner which doesn't match our
-                    # host, skip it
-                    pass
-    else:
-        try:
-            # ensure tokens are still valid, otherwise, delete the runner and
-            # register it again
-            data_file = os.path.join(prefix, "runner-data.json")
-            with open(data_file, "r") as fh:
-                changed = False
-                runner_config = json.load(fh)
-                for runner_type, data in runner_config.items():
-                    data = data or {}
-                    token = data.get("token", "")
-                    if not token or not valid_runner_token(api_url, token):
-                        # no refresh endpoint...delete and re-register
-                        if token:
-                            delete_runner(api_url, token)
-                        runner_config[runner_type] = register_runner(
-                            api_url, admin_token, runner_type, runner_type=runner_type
-                        )
-                        changed = True
-                if changed:
-                    with open(data_file, "w") as fh:
-                        fh.write(json.dumps(runner_config, sort_keys=True, indent=4))
-        except FileNotFoundError:
-            # defaults to creating both a shell and batch runner
-            runner_config = {
-                t: register_runner(
-                    api_url, admin_token, t, generate_tags(runner_type=t)
-                )
-                for t in ["shell", "batch"]
-            }
-            with open(data_file, "w") as fh:
-                fh.write(json.dumps(runner_config, sort_keys=True, indent=4))
-
-    update_runner_config(config_template, config_file, runner_config)
-
+    update_runner_config(config_template, config_file, runners)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="On the fly runner config")
@@ -296,17 +307,13 @@ if __name__ == "__main__":
         "-p",
         "--prefix",
         default="/etc/gitlab-runner",
-        help="""The runner config directory prefix""",
+        help="The runner config directory prefix"
     )
     parser.add_argument(
-        "--api-url", default="http://localhost:8080/api/v4", help="""Gitlab API URL"""
-    )
-    parser.add_argument(
-        "--stateless",
-        action="store_true",
-        help="""If used, disables writing runner-data.json and must query
-        Gitlab directly for state.
-        """,
+        "-i",
+        "--instance",
+        default="/etc/gitlab-runner/main",
+        help="The config template directory for this instance under the configuration directory "
     )
     args = parser.parse_args()
-    configure_runner(args.prefix, args.api_url, stateless=args.stateless)
+    configure_runners(args.prefix, args.instance)
