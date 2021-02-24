@@ -1,4 +1,4 @@
-from gitlab_runner_config import gitlab_client
+from gitlab_runner_config import GitLabClient
 from gitlab_runner_config import generate_tags
 import pytest
 from unittest.mock import Mock
@@ -11,11 +11,11 @@ def requester():
 
 @pytest.fixture
 def gitlab(requester):
-    gitlab = gitlab_client("https://gitlab.example.com", "abcdef", "123456")
+    gitlab = GitLabClient("https://gitlab.example.com", "abcdef", "123456")
     gitlab.requester = requester
     return gitlab
 
-class mock_response:
+class MockResponse:
     def __init__(self, data, code):
         self.data = data
         self.code = code
@@ -27,7 +27,7 @@ class mock_response:
         return self.data
 
 def test_list_runners_empty(requester, gitlab):
-    requester.request.return_value = mock_response("[{}]", 200)
+    requester.request.return_value = MockResponse("[{}]", 200)
     ret = gitlab.list_runners()
     requester.request.assert_called_once()
     assert requester.request.call_args.args[0].get_full_url() == "https://gitlab.example.com/runners/all"
@@ -35,7 +35,7 @@ def test_list_runners_empty(requester, gitlab):
     assert ret == exp
 
 def test_list_runners_error(requester, gitlab):
-    requester.request.return_value = mock_response("[{}]", 500)
+    requester.request.return_value = MockResponse("[{}]", 500)
     requester.request.side_effect = HTTPError("https://gitlab.example.com", 500, None, None, None)
     try:
         gitlab.list_runners()
@@ -44,7 +44,7 @@ def test_list_runners_error(requester, gitlab):
         assert "Error listing Gitlab repos" in str(e)
 
 def test_list_runners_parse_error(requester, gitlab):
-    requester.request.return_value = mock_response("[{}", 200)
+    requester.request.return_value = MockResponse("[{}", 200)
     try:
         gitlab.list_runners()
         assert False
@@ -74,7 +74,7 @@ def test_list_runners(requester, gitlab):
         "status": "offline"\
     }\
     ]'
-    requester.request.return_value = mock_response(runner_data, 200)
+    requester.request.return_value = MockResponse(runner_data, 200)
     ret = gitlab.list_runners()
     requester.request.assert_called_once()
     assert requester.request.call_args.args[0].get_full_url() == \
@@ -99,14 +99,14 @@ def test_list_runners(requester, gitlab):
 
 def test_list_runners_filtered(requester, gitlab):
     filters = {"scope": "shared", "tag_list": ",".join(["host1"])}
-    requester.request.return_value = mock_response("[{}]", 200)
+    requester.request.return_value = MockResponse("[{}]", 200)
     gitlab.list_runners(filters)
     requester.request.assert_called_once()
     assert requester.request.call_args.args[0].get_full_url() == \
          "https://gitlab.example.com/runners/all?scope=shared&tag_list=host1"
 
 def test_valid_runner_token_empty(requester, gitlab):
-    requester.request.return_value = mock_response("[{}]", 403)
+    requester.request.return_value = MockResponse("[{}]", 403)
     requester.request.side_effect = HTTPError("https://gitlab.example.com", 403, None, None, None)
     ret = gitlab.valid_runner_token("")
     requester.request.assert_called_once()
@@ -114,14 +114,14 @@ def test_valid_runner_token_empty(requester, gitlab):
     assert not ret
 
 def test_valid_runner_token_valid(requester, gitlab):
-    requester.request.return_value = mock_response("[{}]", 200)
+    requester.request.return_value = MockResponse("[{}]", 200)
     ret = gitlab.valid_runner_token("abcdef123456")
     requester.request.assert_called_once()
     assert requester.request.call_args.args[0].get_full_url() == "https://gitlab.example.com/runners/verify"
     assert ret
 
 def test_runner_info(requester, gitlab):
-    requester.request.return_value = mock_response('{\
+    requester.request.return_value = MockResponse('{\
         "active": true,\
         "architecture": null,\
         "description": "test-1",\
@@ -133,7 +133,7 @@ def test_runner_info(requester, gitlab):
     assert ret == exp
 
 def test_register_runner(requester, gitlab):
-    requester.request.return_value = mock_response('{\
+    requester.request.return_value = MockResponse('{\
         "id": "12345",\
         "token": "6337ff"\
         }', 201)
@@ -144,7 +144,7 @@ def test_register_runner(requester, gitlab):
     assert ret == exp
 
 def test_register_runner_failure(requester, gitlab):
-    requester.request.return_value = mock_response("", 403)
+    requester.request.return_value = MockResponse("", 403)
     try:
         gitlab.register_runner("batch", generate_tags("batch"))
         assert False
@@ -154,13 +154,13 @@ def test_register_runner_failure(requester, gitlab):
     assert requester.request.call_args.args[0].get_full_url() == "https://gitlab.example.com/runners"
 
 def test_delete_runner(requester, gitlab):
-    requester.request.return_value = mock_response('', 204)
+    requester.request.return_value = MockResponse('', 204)
     gitlab.delete_runner("abc123")
     requester.request.assert_called_once()
     assert requester.request.call_args.args[0].get_full_url() == "https://gitlab.example.com/runners"
 
 def test_delete_runner_failure(requester, gitlab):
-    requester.request.return_value = mock_response('', 403)
+    requester.request.return_value = MockResponse('', 403)
     try:
         gitlab.delete_runner("abc123")
         assert False

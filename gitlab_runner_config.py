@@ -60,16 +60,16 @@ def generate_tags(executor_type=""):
     return tags
 
 
-class url_requester:
+class UrlRequester:
     def request(self, request):
         return urllib.request.urlopen(request)
 
 
-class gitlab_client:
+class GitLabClient:
     base_url = ""
     admin_token = ""
     access_token = ""
-    requester = url_requester()
+    requester = UrlRequester()
 
     def __init__(self, url, admin_token, access_token):
         self.base_url = url
@@ -226,7 +226,7 @@ def create_client(data, clients):
     del data["admin_token"]
     del data["access_token"]
 
-    clients[url] = gitlab_client(url, admin_token, access_token)
+    clients[url] = GitLabClient(url, admin_token, access_token)
     return clients[url]
 
 
