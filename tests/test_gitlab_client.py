@@ -1,11 +1,8 @@
-import gitlab_runner_config
 from gitlab_runner_config import gitlab_client
 from gitlab_runner_config import generate_tags
 import pytest
-import unittest
 from unittest.mock import Mock
 from urllib.error import HTTPError
-from urllib.request import Request
 
 @pytest.fixture
 def requester():

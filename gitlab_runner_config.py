@@ -24,7 +24,6 @@ import urllib.request
 import logging
 import stat
 from shutil import which
-from string import Formatter
 from urllib.request import Request
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError
