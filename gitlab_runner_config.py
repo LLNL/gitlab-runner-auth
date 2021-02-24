@@ -147,7 +147,7 @@ class GitLabClient:
             )
 
             runner_data = self.register_runner_request(data)
-            if runner_data == None:
+            if runner_data is None:
                 raise RuntimeError(
                     "Registration for {runner} failed".format(runner=runner_type)
                 )
