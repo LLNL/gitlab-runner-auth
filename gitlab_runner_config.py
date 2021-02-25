@@ -64,13 +64,13 @@ def generate_tags(executor_type=""):
 
 class GitLabClient:
     base_url = ""
-    admin_token = ""
-    access_token = ""
+    registration_token = ""
+    personal_access_token = ""
 
-    def __init__(self, url, admin_token, access_token):
+    def __init__(self, url, registration_token, personal_access_token):
         self.base_url = url
-        self.admin_token = admin_token
-        self.access_token = access_token
+        self.registration_token = registration_token
+        self.personal_access_token = personal_access_token
 
     def _request(self, resource, query=None, data=None, headers=None, method=None):
         url = urljoin(self.base_url, resource)
@@ -89,7 +89,7 @@ class GitLabClient:
                 self._request(
                     "runners/all",
                     query=filters,
-                    headers={"PRIVATE-TOKEN": self.access_token},
+                    headers={"PRIVATE-TOKEN": self.personal_access_token},
                 )
             )
         except JSONDecodeError as e:
@@ -104,7 +104,7 @@ class GitLabClient:
             return json.load(
                 self._request(
                     "runners/{}".format(repo_id),
-                    headers={"PRIVATE-TOKEN": self.access_token},
+                    headers={"PRIVATE-TOKEN": self.personal_access_token},
                 )
             )
         except JSONDecodeError as e:
@@ -131,7 +131,7 @@ class GitLabClient:
         """Registers a runner and returns its info"""
         try:
             data = {
-                "token": self.admin_token,
+                "token": self.registration_token,
                 "description": tags[0] + "-" + runner_type,
                 "tag_list": ",".join(tags + [runner_type]),
             }
@@ -207,13 +207,13 @@ def create_client(data, clients):
         return clients[url]
 
     # TODO: tokens in the runner configs for multiple gitlab urls, separate?
-    admin_token = data.get("admin_token", "")
-    access_token = data.get("access_token", "")
+    registration_token = data.get("registration_token", "")
+    personal_access_token = data.get("personal_access_token", "")
     # removing admin/access tokens for future writing out to config.toml
-    del data["admin_token"]
-    del data["access_token"]
+    del data["registration_token"]
+    del data["personal_access_token"]
 
-    clients[url] = GitLabClient(url, admin_token, access_token)
+    clients[url] = GitLabClient(url, registration_token, personal_access_token)
     return clients[url]
 
 

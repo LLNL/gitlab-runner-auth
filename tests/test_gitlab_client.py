@@ -49,7 +49,7 @@ class MockResponse:
 
 def test_request(client_data, patched_request):
     path = "foo/bar"
-    base_url, access_token, admin_token = client_data
+    base_url, personal_access_token, registration_token = client_data
     perform_request, req = patched_request
     gitlab = GitLabClient(*client_data)
 
@@ -66,7 +66,7 @@ def test_request(client_data, patched_request):
 def test_request_query(client_data, patched_request):
     path = "foo/bar"
     query = {"baz": "bat"}
-    base_url, access_token, admin_token = client_data
+    base_url, personal_access_token, registration_token = client_data
     perform_request, req = patched_request
     gitlab = GitLabClient(*client_data)
 
