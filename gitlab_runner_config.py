@@ -60,34 +60,38 @@ def generate_tags(executor_type=""):
     return tags
 
 
-class UrlRequester:
-    def request(self, request):
-        return urllib.request.urlopen(request)
 
 
 class GitLabClient:
     base_url = ""
     admin_token = ""
     access_token = ""
-    requester = UrlRequester()
 
     def __init__(self, url, admin_token, access_token):
         self.base_url = url
         self.admin_token = admin_token
         self.access_token = access_token
 
-    def list_runners_request(self, query):
-        url = urljoin(self.base_url, "runners/all" + query)
-        request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
-        return json.load(self.requester.request(request))
+    def _request(self, resource, query=None, data=None, headers=None, method=None):
+        url = urljoin(self.base_url, resource)
+
+        if query:
+            url += "?" + urlencode(query)
+        headers = headers or {}
+
+        return urllib.request.urlopen(
+            Request(url, data=data, headers=headers, method=method)
+        )
 
     def list_runners(self, filters=None):
         try:
-            query = ""
-            if filters:
-                query = "?" + urlencode(filters)
-
-            return self.list_runners_request(query)
+            return json.load(
+                self._request(
+                    "runners/all",
+                    query=filters,
+                    headers={"PRIVATE-TOKEN": self.access_token},
+                )
+            )
         except JSONDecodeError as e:
             raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
@@ -97,9 +101,12 @@ class GitLabClient:
 
     def runner_info(self, repo_id):
         try:
-            url = urljoin(self.base_url, "runners/" + str(repo_id))
-            request = Request(url, headers={"PRIVATE-TOKEN": self.access_token})
-            return json.load(self.requester.request(request))
+            return json.load(
+                self._request(
+                    "runners/{}".format(repo_id),
+                    headers={"PRIVATE-TOKEN": self.access_token},
+                )
+            )
         except JSONDecodeError as e:
             raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
@@ -108,17 +115,11 @@ class GitLabClient:
             )
             raise RuntimeError(cause) from e
 
-    def valid_runner_token_request(self, data):
-        url = urljoin(self.base_url, "runners/verify")
-        request = Request(url, data=data.encode(), method="POST")
-        self.requester.request(request)
-
     def valid_runner_token(self, token):
         """Test whether or not a runner token is valid"""
 
         try:
-            data = urlencode({"token": token})
-            self.valid_runner_token_request(data)
+            self._request("runners/verify", data={"token": token})
             return True
         except HTTPError as e:
             if e.code == 403:
@@ -126,32 +127,22 @@ class GitLabClient:
             else:
                 raise RuntimeError("Error while validating token: {}".format(e.reason))
 
-    def register_runner_request(self, data):
-        url = urljoin(self.base_url, "runners")
-        request = Request(url, data=data.encode(), method="POST")
-        response = self.requester.request(request)
-        if response.getcode() == 201:
-            return json.load(response)
-        else:
-            return None
-
     def register_runner(self, runner_type, tags):
         """Registers a runner and returns its info"""
         try:
-            data = urlencode(
-                {
-                    "token": self.admin_token,
-                    "description": tags[0] + "-" + runner_type,
-                    "tag_list": ",".join(tags + [runner_type]),
-                }
-            )
+            data = {
+                "token": self.admin_token,
+                "description": tags[0] + "-" + runner_type,
+                "tag_list": ",".join(tags + [runner_type]),
+            }
 
-            runner_data = self.register_runner_request(data)
-            if runner_data is None:
-                raise RuntimeError(
-                    "Registration for {runner} failed".format(runner=runner_type)
-                )
-            return runner_data
+            response = self._request("runners", data=data)
+            if response.getcode() == 201:
+                return json.load(response)
+            else:
+                return None
+        except JSONDecodeError as e:
+            raise RuntimeError("Failed parsing request data JSON") from e
         except HTTPError as e:
             cause = (
                 "Error registering runner {runner} with tags {tags}: {reason}".format(
@@ -180,17 +171,13 @@ class GitLabClient:
         """Delete an existing runner"""
 
         try:
-            data = urlencode(
-                {
-                    "token": runner_token,
-                }
+            response = self._request(
+                "runners", data={"token": runner_token}, method="DELETE"
             )
-
-            response = self.delete_runner_request(data)
             if response.getcode() == 204:
                 return True
             else:
-                raise RuntimeError("Deleting runner failed")
+                return False
         except HTTPError as e:
             raise RuntimeError(
                 "Error deleting runner: {reason}".format(reason=e.reason)
