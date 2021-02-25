@@ -1,8 +1,11 @@
 import json
 import pytest
+import urllib
+from urllib.request import Request
+from urllib.parse import urlencode, urljoin
 from gitlab_runner_config import GitLabClient
 from gitlab_runner_config import generate_tags
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 
 
@@ -12,10 +15,24 @@ def requester():
 
 
 @pytest.fixture
-def gitlab(requester):
-    gitlab = GitLabClient("https://gitlab.example.com", "abcdef", "123456")
+def client_data():
+    return ("https://gitlab.example.com", "abcdef", "123456")
+
+
+@pytest.fixture
+def gitlab(requester, client_data):
+    gitlab = GitLabClient(*client_data)
     gitlab._request = requester
     return gitlab
+
+
+@pytest.fixture
+def patched_request(client_data):
+    perform_request = patch.object(urllib, "request", return_value=MockResponse("[{}]", 200))
+    req = patch.object(Request, "__init__", return_value=None)
+    yield perform_request.start(), req.start()
+    perform_request.stop()
+    req.stop()
 
 
 class MockResponse:
@@ -28,6 +45,39 @@ class MockResponse:
 
     def read(self, amt=0):
         return self.data
+
+
+def test_request(client_data, patched_request):
+    path = "foo/bar"
+    base_url, access_token, admin_token = client_data
+    perform_request, req = patched_request
+    gitlab = GitLabClient(*client_data)
+
+    gitlab._request(path)
+    url, = req.call_args.args
+    data, headers, method = req.call_args.kwargs.values()
+    assert url == urljoin(base_url, path)
+    assert data is None
+    assert type(headers) == dict
+    assert not headers
+    assert method is None
+
+
+def test_request_query(client_data, patched_request):
+    path = "foo/bar"
+    query = {"baz": "bat"}
+    base_url, access_token, admin_token = client_data
+    perform_request, req = patched_request
+    gitlab = GitLabClient(*client_data)
+
+    gitlab._request(path, query=query)
+    url, = req.call_args.args
+    data, headers, method = req.call_args.kwargs.values()
+    assert url == urljoin(base_url, path + "?" + urlencode(query))
+    assert data is None
+    assert type(headers) == dict
+    assert not headers
+    assert method is None
 
 
 def test_list_runners_empty(requester, gitlab):
