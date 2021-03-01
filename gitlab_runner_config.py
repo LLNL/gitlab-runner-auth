@@ -98,7 +98,7 @@ class Executor:
         return [c for c in self.configs if not required_keys(c)]
 
 
-def generate_runner_config(prefix, url):
+def generate_runner_config(prefix, instance):
     pass
 
 
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         help="""The runner config directory prefix""",
     )
     parser.add_argument(
-        "--api-url", default="http://localhost:8080/api/v4", help="""Gitlab API URL"""
+        "--instance", default="main", help="""Instance name from systemd"""
     )
     args = parser.parse_args()
-    generate_runner_config(args.prefix, args.api_url)
+    generate_runner_config(args.prefix, args.instance)
