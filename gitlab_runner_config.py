@@ -18,15 +18,8 @@ import re
 import sys
 import socket
 import argparse
-import json
 import toml
-import urllib.request
 from shutil import which
-from string import Formatter
-from urllib.request import Request
-from urllib.parse import urlencode, urljoin
-from urllib.error import HTTPError
-from json import JSONDecodeError
 
 HOSTNAME = socket.gethostname()
 
