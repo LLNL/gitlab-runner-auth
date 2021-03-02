@@ -19,9 +19,13 @@ import sys
 import socket
 import argparse
 import toml
+import logging
 from shutil import which
 
 HOSTNAME = socket.gethostname()
+LOGGER_NAME = "gitlab-runner-config"
+logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 def host_tags():
