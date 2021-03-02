@@ -125,7 +125,7 @@ if __name__ == "__main__":
         help="""The runner config directory prefix""",
     )
     parser.add_argument(
-        "--instance", default="main", help="""Instance name from systemd"""
+        "--service-instance", default="main", help="""Instance name from systemd"""
     )
     args = parser.parse_args()
-    generate_runner_config(args.prefix, args.instance)
+    generate_runner_config(args.prefix, args.service_instance)
