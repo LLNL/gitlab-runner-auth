@@ -110,18 +110,27 @@ def owner_only_permissions(path):
     return not (bool(st.st_mode & stat.S_IRWXG) or bool(st.st_mode & stat.S_IRWXO))
 
 
-def generate_runner_config(prefix, instance):
-    config_file = prefix / Path("config.{}.toml".format(instance))
-    executor_template_dir = prefix / Path(instance)
-
+def valid_config(config_file, prefix, template_dir):
     if not config_file.is_file():
-        if not all(owner_only_permissions(d) for d in [prefix, executor_template_dir]):
-            logger.error(
-                "check permissions on {prefix} or {template}, too permissive, exiting".format(
-                    prefix=prefix, template=executor_template_dir
-                )
+        logger.error("config.toml is needed for runner registration")
+        return False
+    if not all(owner_only_permissions(d) for d in [prefix, template_dir]):
+        logger.error(
+            "permissions on {prefix} or {template} are too permissive".format(
+                prefix=prefix, template=template_dir
             )
-            sys.exit(1)
+        )
+        return False
+    return True
+
+
+def generate_runner_config(prefix, instance):
+    config_file = prefix / "config.toml"
+    instance_config_file = prefix / "config.{}.toml".format(instance)
+    executor_template_dir = prefix / instance
+
+    if not valid_config(config_file, prefix, executor_template_dir):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -136,4 +145,4 @@ if __name__ == "__main__":
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
     args = parser.parse_args()
-    generate_runner_config(args.prefix, args.service_instance)
+    generate_runner_config(Path(args.prefix), args.service_instance)
