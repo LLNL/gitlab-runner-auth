@@ -105,6 +105,12 @@ def load_executors(template_dir):
     return Executor(executor_configs)
 
 
+def create_runner(config, template_dir):
+    config_copy = dict(config)
+    del config_copy["client_configs"]
+    return Runner(config_copy, load_executors(template_dir))
+
+
 def owner_only_permissions(path):
     st = path.stat()
     return not (bool(st.st_mode & stat.S_IRWXG) or bool(st.st_mode & stat.S_IRWXO))
