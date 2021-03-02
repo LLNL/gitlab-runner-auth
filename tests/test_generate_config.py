@@ -26,6 +26,7 @@ from gitlab_runner_config import (
     Runner,
     Executor,
     generate_tags,
+    owner_only_permissions,
     load_executors,
 )
 
@@ -84,6 +85,22 @@ def test_generate_tags():
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
+
+
+def test_owner_only_permissions():
+    with TemporaryDirectory() as td:
+        d = Path(td)
+        os.chmod(d, 0o700)
+        assert owner_only_permissions(d)
+
+        os.chmod(d, 0o750)
+        assert not owner_only_permissions(d)
+
+        os.chmod(d, 0o705)
+        assert not owner_only_permissions(d)
+
+        os.chmod(d, 0o755)
+        assert not owner_only_permissions(d)
 
 
 class TestExecutor:

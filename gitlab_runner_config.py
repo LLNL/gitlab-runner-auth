@@ -107,7 +107,7 @@ def load_executors(template_dir):
 
 def owner_only_permissions(path):
     st = path.stat()
-    return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
+    return not (bool(st.st_mode & stat.S_IRWXG) or bool(st.st_mode & stat.S_IRWXO))
 
 
 def generate_runner_config(prefix, instance):
