@@ -86,27 +86,7 @@ def test_generate_tags():
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
 
 
-def test_load_executors(executor_configs, executor_tomls_dir):
-    executor = load_executors(Path(executor_tomls_dir))
-    assert len(executor.configs) == len(executor_configs)
-
-
-def test_load_executors_no_files(executor_tomls_dir):
-    with TemporaryDirectory() as td:
-        executor = load_executors(Path(td))
-        assert len(executor.configs) == 0
-
-
-def test_load_executors_extra_file(executor_configs, executor_tomls_dir):
-    with open(Path(executor_tomls_dir) / "bat", "w") as fh:
-        fh.write("bat")
-
-    # loaded executors should only consider .toml files
-    executor = load_executors(Path(executor_tomls_dir))
-    assert len(executor.configs) == len(executor_configs)
-
-
-class TestExecutorConfigs:
+class TestExecutor:
     def test_normalize(self, executor):
         executor.normalize()
         assert all(c.get("name") for c in executor.configs)
@@ -120,3 +100,20 @@ class TestExecutorConfigs:
 
     def test_missing_required_config(self, executor):
         assert len(executor.missing_required_config()) == len(executor.configs)
+
+    def test_load_executors(self, executor_configs, executor_tomls_dir):
+        executor = load_executors(Path(executor_tomls_dir))
+        assert len(executor.configs) == len(executor_configs)
+
+    def test_load_executors_no_files(self, executor_tomls_dir):
+        with TemporaryDirectory() as td:
+            executor = load_executors(Path(td))
+            assert len(executor.configs) == 0
+
+    def test_load_executors_extra_file(self, executor_configs, executor_tomls_dir):
+        with open(Path(executor_tomls_dir) / "bat", "w") as fh:
+            fh.write("bat")
+
+        # loaded executors should only consider .toml files
+        executor = load_executors(Path(executor_tomls_dir))
+        assert len(executor.configs) == len(executor_configs)
