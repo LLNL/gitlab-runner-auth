@@ -56,14 +56,17 @@ def generate_tags(executor_type=""):
 
 
 class Runner:
-    def __init__(self, config, executor_configs):
+    def __init__(self, config, executor):
         self.config = config
-        self.executor_configs = executor_configs
+        self.executor = executor
 
-    def to_toml(self):
+    def empty(self):
+        return len(self.executor) == 0
+
+    def to_dict(self):
         config = dict(self.config)
-        config["runners"] = self.executor_configs
-        return toml.dump(config)
+        config["runners"] = self.executor.configs
+        return config
 
 
 class Executor:

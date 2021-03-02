@@ -28,10 +28,19 @@ from gitlab_runner_config import (
     generate_tags,
     owner_only_permissions,
     load_executors,
+    create_runner,
 )
 
 
 base_path = os.getcwd()
+
+
+@fixture
+def runner_config():
+    return {
+        "name": "foo",
+        "client_configs": ["bar", "baz"]
+    }
 
 
 @fixture
@@ -134,3 +143,21 @@ class TestExecutor:
         # loaded executors should only consider .toml files
         executor = load_executors(executor_tomls_dir)
         assert len(executor.configs) == len(executor_configs)
+
+
+class TestRunner:
+    def test_create(self, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, executor_tomls_dir)
+        assert runner_config.get("client_configs") is not None
+        assert runner.config is not None
+        assert runner.executor is not None
+
+    def test_empty(self, runner_config):
+        runner = Runner(runner_config, [])
+        assert runner.empty()
+
+    def test_to_dict(self, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, executor_tomls_dir)
+        runner_dict = runner.to_dict()
+        assert type(runner_dict.get("runners")) == list
+        assert toml.dumps(runner_dict)
