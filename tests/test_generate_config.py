@@ -26,6 +26,7 @@ from gitlab_runner_config import (
     Runner,
     Executor,
     generate_tags,
+    load_executors,
 )
 
 
@@ -39,9 +40,19 @@ def executor_configs():
     executor_tmpl = "{}-executor"
     for name in ["foo", "bar"]:
         configs.append(
-            {"url": url_tmpl.format(name), "executor": executor_tmpl.format(name)}
+            {"name": name, "url": url_tmpl.format(name), "executor": executor_tmpl.format(name)}
         )
     return configs
+
+
+@fixture
+def executor_tomls_dir(executor_configs):
+    td = TemporaryDirectory()
+    for config in executor_configs:
+        with open(td.name / Path(config["name"] + ".toml"), 'w') as f:
+            toml.dump(config, f)
+    yield td.name
+    td.cleanup()
 
 
 @fixture
@@ -73,6 +84,26 @@ def test_generate_tags():
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
+
+
+def test_load_executors(executor_configs, executor_tomls_dir):
+    executor = load_executors(Path(executor_tomls_dir))
+    assert len(executor.configs) == len(executor_configs)
+
+
+def test_load_executors_no_files(executor_tomls_dir):
+    with TemporaryDirectory() as td:
+        executor = load_executors(Path(td))
+        assert len(executor.configs) == 0
+
+
+def test_load_executors_extra_file(executor_configs, executor_tomls_dir):
+    with open(Path(executor_tomls_dir) / "bat", "w") as fh:
+        fh.write("bat")
+
+    # loaded executors should only consider .toml files
+    executor = load_executors(Path(executor_tomls_dir))
+    assert len(executor.configs) == len(executor_configs)
 
 
 class TestExecutorConfigs:

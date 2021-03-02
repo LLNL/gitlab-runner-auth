@@ -97,6 +97,14 @@ class Executor:
         return [c for c in self.configs if not required_keys(c)]
 
 
+def load_executors(template_dir):
+    executor_configs = []
+    for executor_toml in template_dir.glob("*.toml"):
+        with executor_toml.open() as et:
+            executor_configs.append(toml.load(et))
+    return Executor(executor_configs)
+
+
 def owner_only_permissions(path):
     st = path.stat()
     return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
