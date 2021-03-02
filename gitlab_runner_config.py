@@ -61,7 +61,7 @@ class Runner:
         self.executor = executor
 
     def empty(self):
-        return len(self.executor) == 0
+        return len(self.executor.configs) == 0
 
     def to_dict(self):
         config = dict(self.config)

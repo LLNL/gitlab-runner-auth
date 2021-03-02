@@ -153,7 +153,7 @@ class TestRunner:
         assert runner.executor is not None
 
     def test_empty(self, runner_config):
-        runner = Runner(runner_config, [])
+        runner = Runner(runner_config, Executor([]))
         assert runner.empty()
 
     def test_to_dict(self, runner_config, executor_tomls_dir):
