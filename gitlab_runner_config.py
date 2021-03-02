@@ -16,10 +16,12 @@
 import os
 import re
 import sys
+import stat
 import socket
 import argparse
 import toml
 import logging
+from pathlib import Path
 from shutil import which
 
 HOSTNAME = socket.gethostname()
@@ -95,8 +97,23 @@ class Executor:
         return [c for c in self.configs if not required_keys(c)]
 
 
+def owner_only_permissions(path):
+    st = path.stat()
+    return not (bool(st.st_mode & stat.S_IRWXG) and bool(st.st_mode & stat.S_IRWXU))
+
+
 def generate_runner_config(prefix, instance):
-    pass
+    config_file = prefix / Path("config.{}.toml".format(instance))
+    executor_template_dir = prefix / Path(instance)
+
+    if not config_file.is_file():
+        if not all(owner_only_permissions(d) for d in [prefix, executor_template_dir]):
+            logger.error(
+                "check permissions on {prefix} or {template}, too permissive, exiting".format(
+                    prefix=prefix, template=executor_template_dir
+                )
+            )
+            sys.exit(1)
 
 
 if __name__ == "__main__":
