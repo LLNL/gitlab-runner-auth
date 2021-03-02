@@ -52,7 +52,7 @@ def executor_tomls_dir(executor_configs):
     for config in executor_configs:
         with open(td.name / Path(config["name"] + ".toml"), 'w') as f:
             toml.dump(config, f)
-    yield td.name
+    yield Path(td.name)
     td.cleanup()
 
 
@@ -119,7 +119,7 @@ class TestExecutor:
         assert len(executor.missing_required_config()) == len(executor.configs)
 
     def test_load_executors(self, executor_configs, executor_tomls_dir):
-        executor = load_executors(Path(executor_tomls_dir))
+        executor = load_executors(executor_tomls_dir)
         assert len(executor.configs) == len(executor_configs)
 
     def test_load_executors_no_files(self, executor_tomls_dir):
@@ -128,9 +128,9 @@ class TestExecutor:
             assert len(executor.configs) == 0
 
     def test_load_executors_extra_file(self, executor_configs, executor_tomls_dir):
-        with open(Path(executor_tomls_dir) / "bat", "w") as fh:
+        with open(executor_tomls_dir / "bat", "w") as fh:
             fh.write("bat")
 
         # loaded executors should only consider .toml files
-        executor = load_executors(Path(executor_tomls_dir))
+        executor = load_executors(executor_tomls_dir)
         assert len(executor.configs) == len(executor_configs)
