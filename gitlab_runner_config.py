@@ -84,10 +84,11 @@ class Executor:
             )
         self.by_description = {c["description"]: c for c in self.configs}
 
-    def missing_token(self):
-        return [c for c in self.configs if not c.get("token")]
     def add_token(self, executor, token):
         self.by_description[executor]["token"] = token
+
+    def missing_token(self, url):
+        return [c for c in self.configs if c["url"] == url and not c.get("token")]
 
     def missing_required_config(self):
         def required_keys(c):

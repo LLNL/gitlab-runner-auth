@@ -119,10 +119,11 @@ class TestExecutor:
         assert all(c.get("tags") for c in executor.configs)
 
     def test_missing_token(self, executor):
-        assert len(executor.missing_token()) == len(executor.configs)
-        for e in executor.missing_token():
+        url = executor.configs[0]["url"]
+        assert len(executor.missing_token(url)) == 1
+        for e in executor.missing_token(url):
             e["token"] = "token"
-        assert len(executor.missing_token()) == 0
+        assert len(executor.missing_token(url)) == 0
 
     def test_missing_required_config(self, executor):
         assert len(executor.missing_required_config()) == len(executor.configs)
