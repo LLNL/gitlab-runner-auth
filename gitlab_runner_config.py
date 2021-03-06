@@ -71,6 +71,7 @@ class Runner:
 
 class Executor:
     def __init__(self, configs):
+        self.by_description = {}
         self.configs = configs
         self.normalize()
 
@@ -81,9 +82,12 @@ class Executor:
             c["description"] = "{host} {executor} Runner".format(
                 host=HOSTNAME, executor=executor
             )
+        self.by_description = {c["description"]: c for c in self.configs}
 
     def missing_token(self):
         return [c for c in self.configs if not c.get("token")]
+    def add_token(self, executor, token):
+        self.by_description[executor]["token"] = token
 
     def missing_required_config(self):
         def required_keys(c):
