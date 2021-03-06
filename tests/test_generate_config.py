@@ -19,12 +19,15 @@ import shutil
 import json
 import pytest
 import stat
+from unittest.mock import MagicMock
+from httmock import HTTMock, urlmatch, response
 from pytest import fixture
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
     Runner,
     Executor,
+    GitLabClientManager,
     generate_tags,
     owner_only_permissions,
     load_executors,
@@ -36,30 +39,46 @@ base_path = os.getcwd()
 
 
 @fixture
-def runner_config():
-    return {
-        "name": "foo",
-        "client_configs": ["bar", "baz"]
-    }
-
-
-@fixture
 def executor_configs():
     configs = []
-    url_tmpl = "https://example.com/{}"
+    url_tmpl = "http://localhost/{}"
     executor_tmpl = "{}-executor"
     for desc in ["foo", "bar"]:
         configs.append(
-            {"description": desc, "url": url_tmpl.format(desc), "executor": executor_tmpl.format(desc)}
+            {
+                "description": "runner-{}".format(desc),
+                "url": url_tmpl.format(desc),
+                "executor": executor_tmpl.format(desc),
+            }
         )
     return configs
+
+
+@fixture
+def client_configs():
+    configs = []
+    url_tmpl = "http://localhost/{}"
+    for server in ["foo", "bar"]:
+        configs.append(
+            {
+                "registration_token": server,
+                "url": url_tmpl.format(server),
+                "personal_access_token": server,
+            }
+        )
+    return configs
+
+
+@fixture
+def runner_config(client_configs):
+    return {"name": "foo", "client_configs": client_configs}
 
 
 @fixture
 def executor_tomls_dir(executor_configs):
     td = TemporaryDirectory()
     for config in executor_configs:
-        with open(td.name / Path(config["description"] + ".toml"), 'w') as f:
+        with open(td.name / Path(config["description"] + ".toml"), "w") as f:
             toml.dump(config, f)
     yield Path(td.name)
     td.cleanup()
@@ -68,6 +87,63 @@ def executor_tomls_dir(executor_configs):
 @fixture
 def executor(executor_configs):
     yield Executor(executor_configs)
+
+
+@fixture
+def url_matchers():
+    runners = [{"id": 1}, {"id": 2}]
+
+    @urlmatch(path=r".*\/api\/v4\/runners$", method="get")
+    def runner_list_resp(url, request):
+        headers = {"content-type": "application/json"}
+        content = json.dumps(runners)
+        return response(200, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners\/\d+$", method="get")
+    def runner_detail_resp(url, request):
+        runner_id = url.path.split("/")[-1]
+        headers = {"content-type": "application/json"}
+        content = json.dumps(
+            {
+                "id": runner_id,
+                "token": "token",
+                "description": "runner-{}".format(runner_id),
+            }
+        )
+        return response(200, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners\/\d+$", method="delete")
+    def runner_delete_resp(url, request):
+        runner_id = url.path.split("/")[-1]
+        headers = {"content-type": "application/json"}
+        content = json.dumps(
+            {
+                "id": runner_id,
+                "token": "token",
+                "description": "runner-{}".format(runner_id),
+            }
+        )
+        return response(204, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners$", method="post")
+    def runner_registration_resp(url, request):
+        headers = {"content-type": "application/json"}
+        # TODO id from request
+        content = json.dumps(
+            {
+                "id": 3,
+                "token": "token",
+                "description": "runner-{}".format(3),
+            }
+        )
+        return response(201, content, headers, None, 5, request)
+
+    return (
+        runner_list_resp,
+        runner_detail_resp,
+        runner_delete_resp,
+        runner_registration_resp,
+    )
 
 
 def test_generate_tags():
@@ -162,3 +238,40 @@ class TestRunner:
         runner_dict = runner.to_dict()
         assert type(runner_dict.get("runners")) == list
         assert toml.dumps(runner_dict)
+
+
+class TestGitLabClientManager:
+    def setup_method(self, method):
+        self.runner = MagicMock()
+
+    def test_init(self, client_configs):
+        client_manager = GitLabClientManager(client_configs)
+        assert client_manager.clients
+        assert client_manager.registration_tokens
+
+    def test_sync_runner_state(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.add_token.assert_called()
+
+    def test_sync_runner_state_delete(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+        self.runner.executor.add_token.side_effect = KeyError("Missing key!")
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.add_token.assert_called()
+
+    def test_sync_runner_state_missing(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+        self.runner.executor.missing_token.return_value = [
+            {"description": "bat", "tags": ["bat", "bam"]}
+        ]
+
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.missing_token.assert_called()
+            for config in client_configs:
+                self.runner.executor.missing_token.assert_any_call(config["url"])
+            self.runner.executor.add_token.assert_called()

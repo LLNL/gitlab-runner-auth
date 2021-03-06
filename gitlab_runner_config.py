@@ -21,8 +21,14 @@ import socket
 import argparse
 import toml
 import logging
+import gitlab
 from pathlib import Path
 from shutil import which
+from gitlab.exceptions import (
+    GitlabAuthenticationError,
+    GitlabConnectionError,
+    GitlabHttpError,
+)
 
 HOSTNAME = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
@@ -105,6 +111,61 @@ class Executor:
         return [c for c in self.configs if not required_keys(c)]
 
 
+class SyncException(Exception):
+    pass
+
+
+class GitLabClientManager:
+    def __init__(self, client_configs):
+        self.clients = {}
+        self.registration_tokens = {}
+        for client_config in client_configs:
+            url = client_config["url"]
+            self.registration_tokens[url] = client_config["registration_token"]
+            self.clients[url] = gitlab.Gitlab(
+                url,
+                private_token=client_config["personal_access_token"],
+            )
+
+    def sync_runner_state(self, runner):
+        try:
+            for url, client in self.clients.items():
+                for r in client.runners.list(
+                    scope="shared", tag_list=[HOSTNAME], all=True
+                ):
+                    info = client.runners.get(r.id)
+                    try:
+                        runner.executor.add_token(info.description, info.token)
+                    except KeyError:
+                        # this runner's executor config was removed, it's state should
+                        # be deleted from GitLab
+                        client.runners.delete(r.id)
+
+                # executors missing tokens need to be registered
+                for missing in runner.executor.missing_token(url):
+                    registration_token = self.registration_tokens[url]
+                    info = client.runners.create(
+                        {
+                            "description": missing["description"],
+                            "token": registration_token,
+                            "tag_list": missing["tags"],
+                        }
+                    )
+                    runner.executor.add_token(info.description, info.token)
+        except GitlabAuthenticationError as e:
+            raise SyncException(
+                "Failed authenticating to GitLab: {reason}".format(reason=e.reason)
+            )
+        except GitlabConnectionError as e:
+            raise SyncException(
+                "Unable to connect to GitLab: {reason}".format(reason=e.reason)
+            )
+        except GitlabHttpError as e:
+            raise SyncException(
+                "HTTP Error communicating with GitLab: {reason}".format(reason=e.reason)
+            )
+
+
 def load_executors(template_dir):
     executor_configs = []
     for executor_toml in template_dir.glob("*.toml"):
@@ -124,10 +185,7 @@ def owner_only_permissions(path):
     return not (bool(st.st_mode & stat.S_IRWXG) or bool(st.st_mode & stat.S_IRWXO))
 
 
-def valid_config(config_file, prefix, template_dir):
-    if not config_file.is_file():
-        logger.error("config.toml is needed for runner registration")
-        return False
+def secure_permissions(prefix, template_dir):
     if not all(owner_only_permissions(d) for d in [prefix, template_dir]):
         logger.error(
             "permissions on {prefix} or {template} are too permissive".format(
@@ -143,8 +201,26 @@ def generate_runner_config(prefix, instance):
     instance_config_file = prefix / "config.{}.toml".format(instance)
     executor_template_dir = prefix / instance
 
-    if not valid_config(config_file, prefix, executor_template_dir):
+    if not secure_permissions(prefix, executor_template_dir):
         sys.exit(1)
+
+    try:
+        with open(config_file) as fh:
+            config = toml.load(fh)
+    except FileNotFoundError:
+        logger.error("config.toml is needed for runner registration")
+        sys.exit(1)
+
+    runner = create_runner(config, executor_template_dir)
+    client_manager = GitLabClientManager(config["client_configs"])
+    try:
+        client_manager.sync_runner_state(runner)
+    except SyncException as e:
+        logger.error(e.reason)
+        sys.exit(1)
+
+    with open(instance_config_file, "w") as fh:
+        toml.dump(runner.to_dict(), fh)
 
 
 if __name__ == "__main__":
