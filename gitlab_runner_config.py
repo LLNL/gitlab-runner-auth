@@ -78,7 +78,7 @@ class Executor:
         for c in self.configs:
             executor = c["executor"]
             c["tags"] = generate_tags(executor_type=executor)
-            c["name"] = "{host} {executor} Runner".format(
+            c["description"] = "{host} {executor} Runner".format(
                 host=HOSTNAME, executor=executor
             )
 
@@ -89,7 +89,7 @@ class Executor:
         def required_keys(c):
             return all(
                 [
-                    c.get("name"),
+                    c.get("description"),
                     c.get("token"),
                     c.get("url"),
                     c.get("executor"),

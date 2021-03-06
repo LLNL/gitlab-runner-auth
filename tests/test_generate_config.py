@@ -48,9 +48,9 @@ def executor_configs():
     configs = []
     url_tmpl = "https://example.com/{}"
     executor_tmpl = "{}-executor"
-    for name in ["foo", "bar"]:
+    for desc in ["foo", "bar"]:
         configs.append(
-            {"name": name, "url": url_tmpl.format(name), "executor": executor_tmpl.format(name)}
+            {"description": desc, "url": url_tmpl.format(desc), "executor": executor_tmpl.format(desc)}
         )
     return configs
 
@@ -59,7 +59,7 @@ def executor_configs():
 def executor_tomls_dir(executor_configs):
     td = TemporaryDirectory()
     for config in executor_configs:
-        with open(td.name / Path(config["name"] + ".toml"), 'w') as f:
+        with open(td.name / Path(config["description"] + ".toml"), 'w') as f:
             toml.dump(config, f)
     yield Path(td.name)
     td.cleanup()
@@ -115,7 +115,7 @@ def test_owner_only_permissions():
 class TestExecutor:
     def test_normalize(self, executor):
         executor.normalize()
-        assert all(c.get("name") for c in executor.configs)
+        assert all(c.get("description") for c in executor.configs)
         assert all(c.get("tags") for c in executor.configs)
 
     def test_missing_token(self, executor):
