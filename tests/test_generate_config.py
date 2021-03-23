@@ -15,9 +15,7 @@ import os
 import re
 import socket
 import toml
-import shutil
 import json
-import pytest
 import stat
 from unittest.mock import MagicMock
 from httmock import HTTMock, urlmatch, response
