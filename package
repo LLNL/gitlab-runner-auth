@@ -1,0 +1,12 @@
+#!/bin/bash
+
+[[ -d build ]] && rm -rf build
+mkdir -p build
+cp gitlab_runner_config.py build/__main__.py
+cp requirements.txt build/
+pushd .
+  cd build
+  python3 -m pip install -t $PWD -r requirements.txt
+popd
+python3 -m zipapp build -p "/usr/bin/env python3" -o register-runner
+chmod +x register-runner
