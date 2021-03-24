@@ -196,15 +196,15 @@ def secure_permissions(prefix, template_dir):
 
 
 def generate_runner_config(prefix, instance):
-    config_file = prefix / "config.toml"
-    instance_config_file = prefix / "config.{}.toml".format(instance)
+    instance_config_file = prefix / "config.{}.toml"
+    instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
 
     if not secure_permissions(prefix, executor_template_dir):
         sys.exit(1)
 
     try:
-        with open(config_file) as fh:
+        with open(instance_config_template_file) as fh:
             config = toml.load(fh)
     except FileNotFoundError:
         logger.error("config.toml is needed for runner registration")
