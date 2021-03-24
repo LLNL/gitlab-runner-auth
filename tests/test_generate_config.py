@@ -17,7 +17,8 @@ import socket
 import toml
 import json
 import stat
-from unittest.mock import MagicMock
+import pytest
+from unittest.mock import MagicMock, patch
 from httmock import HTTMock, urlmatch, response
 from pytest import fixture
 from pathlib import Path
@@ -26,14 +27,47 @@ from gitlab_runner_config import (
     Runner,
     Executor,
     GitLabClientManager,
+    SyncException,
     generate_tags,
     owner_only_permissions,
     load_executors,
     create_runner,
+    generate_runner_config,
 )
 
 
 base_path = os.getcwd()
+
+
+@fixture
+def top_level_call_patchers():
+    create_runner_patcher = patch("gitlab_runner_config.create_runner")
+    client_manager_patcher = patch("gitlab_runner_config.GitLabClientManager")
+    runner = MagicMock()
+    runner.to_dict.return_value = {}
+    create_runner_mock = create_runner_patcher.start()
+    create_runner_mock.return_value = runner
+    yield [create_runner_mock, client_manager_patcher.start()]
+    create_runner_mock.stop()
+    client_manager_patcher.stop()
+
+
+@fixture
+def established_prefix(tmp_path):
+    instance = "main"
+    prefix = tmp_path
+    prefix.chmod(0o700)
+    instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
+    instance_config_template_file.write_text(
+        """
+            [client_configs]
+            foo = "bar"
+        """.strip()
+    )
+    executor_dir = prefix / "main"
+    executor_dir.mkdir()
+    executor_dir.chmod(0o700)
+    return (prefix, instance)
 
 
 @fixture
@@ -273,3 +307,51 @@ class TestGitLabClientManager:
             for config in client_configs:
                 self.runner.executor.missing_token.assert_any_call(config["url"])
             self.runner.executor.add_token.assert_called()
+
+
+class TestGitLabRunnerConfig:
+    def test_generate_runner_config(self, established_prefix, top_level_call_patchers):
+        generate_runner_config(*established_prefix)
+
+    def test_generate_runner_config_invalid_prefix_perms(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        prefix.chmod(0o777)
+
+        with pytest.raises(SystemExit):
+            generate_runner_config(prefix, instance)
+
+    def test_generate_runner_config_invalid_executor_perms(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        executor_dir = prefix / instance
+        executor_dir.chmod(0o777)
+
+        with pytest.raises(SystemExit):
+            generate_runner_config(prefix, instance)
+
+    def test_generate_runner_config_missing(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        instance_config_template_file = prefix / "config.template.{}.toml".format(
+            instance
+        )
+        instance_config_template_file.unlink()
+
+        with pytest.raises(SystemExit):
+            generate_runner_config(prefix, instance)
+
+    def test_generate_runner_sync_error(
+        self, established_prefix, top_level_call_patchers
+    ):
+
+        manager = MagicMock()
+        manager.sync_runner_state.side_effect = SyncException("oh no!")
+        _, client_manager_patcher = top_level_call_patchers
+        client_manager_patcher.return_value = manager
+
+        with pytest.raises(SystemExit):
+            generate_runner_config(*established_prefix)
