@@ -195,6 +195,11 @@ def generate_runner_config(prefix, instance):
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
 
+    logger.info(
+        "starting config generation using template {template}".format(
+            template=instance_config_template_file
+        )
+    )
     try:
         if not secure_permissions(prefix, executor_template_dir):
             logger.error(
@@ -211,15 +216,24 @@ def generate_runner_config(prefix, instance):
         sys.exit(1)
 
     runner = create_runner(config, executor_template_dir)
+    logger.info(
+        "loaded executors from {templates}".format(templates=executor_template_dir)
+    )
     client_manager = GitLabClientManager(config["client_configs"])
     try:
+        logger.info("syncing state with GitLab(s)")
         client_manager.sync_runner_state(runner)
     except SyncException as e:
-        logger.error(e.reason)
+        logger.error(e)
         sys.exit(1)
 
     with open(instance_config_file, "w") as fh:
+        logger.info("writing config to {config}".format(config=instance_config_file))
         toml.dump(runner.to_dict(), fh)
+
+    logger.info(
+        "finished configuring runner for instance {instance}".format(instance=instance)
+    )
 
 
 if __name__ == "__main__":
