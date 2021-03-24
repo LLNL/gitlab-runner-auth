@@ -186,11 +186,6 @@ def owner_only_permissions(path):
 
 def secure_permissions(prefix, template_dir):
     if not all(owner_only_permissions(d) for d in [prefix, template_dir]):
-        logger.error(
-            "permissions on {prefix} or {template} are too permissive".format(
-                prefix=prefix, template=template_dir
-            )
-        )
         return False
     return True
 
@@ -200,14 +195,19 @@ def generate_runner_config(prefix, instance):
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
 
-    if not secure_permissions(prefix, executor_template_dir):
-        sys.exit(1)
-
     try:
+        if not secure_permissions(prefix, executor_template_dir):
+            logger.error(
+                "permissions on {prefix} or {templates} are too permissive".format(
+                    prefix=prefix, templates=executor_template_dir
+                )
+            )
+            sys.exit(1)
         with open(instance_config_template_file) as fh:
             config = toml.load(fh)
-    except FileNotFoundError:
-        logger.error("config.toml is needed for runner registration")
+
+    except FileNotFoundError as e:
+        logger.error(e)
         sys.exit(1)
 
     runner = create_runner(config, executor_template_dir)
