@@ -208,8 +208,7 @@ def generate_runner_config(prefix, instance):
                 )
             )
             sys.exit(1)
-        with open(instance_config_template_file) as fh:
-            config = toml.load(fh)
+        config = toml.loads(instance_config_template_file.read_text())
 
     except FileNotFoundError as e:
         logger.error(e)
@@ -227,9 +226,8 @@ def generate_runner_config(prefix, instance):
         logger.error(e)
         sys.exit(1)
 
-    with open(instance_config_file, "w") as fh:
-        logger.info("writing config to {config}".format(config=instance_config_file))
-        toml.dump(runner.to_dict(), fh)
+    logger.info("writing config to {config}".format(config=instance_config_file))
+    instance_config_file.write_text(toml.dumps(runner.to_dict()))
 
     logger.info(
         "finished configuring runner for instance {instance}".format(instance=instance)
