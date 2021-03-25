@@ -29,14 +29,14 @@ from gitlab.exceptions import (
     GitlabHttpError,
 )
 
-HOSTNAME = socket.gethostname()
+HOSTNAME = socket.getfqdn()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
 
-def host_tags():
-    return [HOSTNAME, re.sub(r"\d", "", HOSTNAME)]
+def identifying_tags():
+    return list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
 
 
 def generate_tags(executor_type=""):
@@ -49,7 +49,9 @@ def generate_tags(executor_type=""):
     on the appropriate host.
     """
 
-    tags = host_tags()
+    tags = identifying_tags()
+    if executor_type:
+        tags.append(executor_type)
     if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
@@ -129,9 +131,7 @@ class GitLabClientManager:
     def sync_runner_state(self, runner):
         try:
             for url, client in self.clients.items():
-                for r in client.runners.list(
-                    scope="shared", tag_list=[HOSTNAME], all=True
-                ):
+                for r in client.runners.all(tag_list=identifying_tags()):
                     info = client.runners.get(r.id)
                     try:
                         runner.executor.add_token(info.description, info.token)
