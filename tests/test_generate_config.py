@@ -125,7 +125,7 @@ def executor(executor_configs):
 def url_matchers():
     runners = [{"id": 1}, {"id": 2}]
 
-    @urlmatch(path=r".*\/api\/v4\/runners$", method="get")
+    @urlmatch(path=r".*\/api\/v4\/runners/all$", method="get")
     def runner_list_resp(url, request):
         headers = {"content-type": "application/json"}
         content = json.dumps(runners)
