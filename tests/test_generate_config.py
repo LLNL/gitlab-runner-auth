@@ -180,7 +180,7 @@ def url_matchers():
 
 def test_generate_tags():
     tags = generate_tags()
-    hostname = socket.gethostname()
+    hostname = socket.getfqdn()
     assert hostname in tags
     assert re.sub(r"\d", "", hostname) in tags
 
