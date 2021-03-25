@@ -150,7 +150,7 @@ class GitLabClientManager:
                             "tag_list": missing["tags"],
                         }
                     )
-                    runner.executor.add_token(info.description, info.token)
+                    runner.executor.add_token(missing["description"], info.token)
         except GitlabAuthenticationError as e:
             raise SyncException(
                 "Failed authenticating to GitLab: {reason}".format(reason=e.reason)
