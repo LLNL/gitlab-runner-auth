@@ -134,14 +134,27 @@ class GitLabClientManager:
                 for r in client.runners.all(tag_list=identifying_tags()):
                     info = client.runners.get(r.id)
                     try:
+                        logger.info(
+                            "restoring info for {runner}".format(
+                                runner=info.description
+                            )
+                        )
                         runner.executor.add_token(info.description, info.token)
                     except KeyError:
                         # this runner's executor config was removed, it's state should
                         # be deleted from GitLab
+                        logger.info(
+                            "removing {runner} runner with missing executor config".format(
+                                runner=info.description
+                            )
+                        )
                         client.runners.delete(r.id)
 
                 # executors missing tokens need to be registered
                 for missing in runner.executor.missing_token(url):
+                    logger.info(
+                        "registering {runner}".format(runner=missing["description"])
+                    )
                     registration_token = self.registration_tokens[url]
                     info = client.runners.create(
                         {
