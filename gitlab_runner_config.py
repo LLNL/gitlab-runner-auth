@@ -191,7 +191,7 @@ def secure_permissions(prefix, template_dir):
 
 
 def generate_runner_config(prefix, instance):
-    instance_config_file = prefix / "config.{}.toml"
+    instance_config_file = prefix / "config.{}.toml".format(instance)
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
 
