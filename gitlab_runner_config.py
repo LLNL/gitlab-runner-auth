@@ -29,7 +29,7 @@ from gitlab.exceptions import (
     GitlabHttpError,
 )
 
-HOSTNAME = socket.getfqdn()
+HOSTNAME = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
