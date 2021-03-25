@@ -166,15 +166,15 @@ class GitLabClientManager:
                     runner.executor.add_token(missing["description"], info.token)
         except GitlabAuthenticationError as e:
             raise SyncException(
-                "Failed authenticating to GitLab: {reason}".format(reason=e.reason)
+                "Failed authenticating to GitLab: {reason}".format(reason=e)
             )
         except GitlabConnectionError as e:
             raise SyncException(
-                "Unable to connect to GitLab: {reason}".format(reason=e.reason)
+                "Unable to connect to GitLab: {reason}".format(reason=e)
             )
         except GitlabHttpError as e:
             raise SyncException(
-                "HTTP Error communicating with GitLab: {reason}".format(reason=e.reason)
+                "HTTP Error communicating with GitLab: {reason}".format(reason=e)
             )
 
 
