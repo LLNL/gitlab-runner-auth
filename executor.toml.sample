@@ -1,2 +1,5 @@
 url = "https://gitlab.example.com"
 executor = "shell"
+env_tags = [
+    "SHELL"
+]

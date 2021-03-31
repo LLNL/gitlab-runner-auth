@@ -28,6 +28,7 @@ from gitlab_runner_config import (
     Executor,
     GitLabClientManager,
     SyncException,
+    identifying_tags,
     generate_tags,
     owner_only_permissions,
     load_executors,
@@ -202,6 +203,22 @@ def test_generate_tags():
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
+
+
+def test_generate_tags_env():
+    env_name = "TEST_TAG"
+    missing_env_name = "TEST_MISSING_TAG"
+    env_val = "tag"
+    os.environ[env_name] = env_val
+    tags = generate_tags(env=[env_name, missing_env_name])
+
+    assert env_val in tags
+
+    tags = generate_tags(env=[missing_env_name])
+    assert set(identifying_tags()) == set(tags)
+
+    tags = generate_tags(env=[])
+    assert set(identifying_tags()) == set(tags)
 
 
 def test_owner_only_permissions():
