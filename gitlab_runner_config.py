@@ -13,6 +13,7 @@
 # SPDX-License-Identifier: MIT
 ###############################################################################
 
+import os
 import re
 import sys
 import stat
@@ -39,7 +40,7 @@ def identifying_tags():
     return list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
 
 
-def generate_tags(executor_type=""):
+def generate_tags(executor_type="", env=None):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -52,6 +53,8 @@ def generate_tags(executor_type=""):
     tags = identifying_tags()
     if executor_type:
         tags.append(executor_type)
+    if env:
+        tags += [os.environ[e] for e in env if e in os.environ]
     if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
@@ -85,7 +88,7 @@ class Executor:
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
-            c["tags"] = generate_tags(executor_type=executor)
+            c["tags"] = generate_tags(executor_type=executor, env=c.get("env_tags"))
             c["description"] = "{host} {executor} Runner".format(
                 host=HOSTNAME, executor=executor
             )
