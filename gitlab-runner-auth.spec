@@ -1,5 +1,5 @@
 Name:           gitlab-runner-auth
-Version:        v0.1.0
+Version:        _VERSION_
 Release:        1%{?dist}
 Summary:        Enables on-demand runner registration
 

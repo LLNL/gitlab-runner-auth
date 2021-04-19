@@ -23,8 +23,9 @@ jobs:
           export RPM_BUILD=$HOME/rpmbuild
           export SPECS=$RPM_BUILD/SPECS RPMS=$RPM_BUILD/RPMS VERSION=$(basename ${{ github.ref }})
           cp gitlab-runner-auth.spec $SPECS && cd $SPECS
-          spectool -d "version $VERSION" -g -R gitlab-runner-auth.spec
-          rpmbuild -ba -d "version $VERSION" gitlab-runner-auth.spec
+          sed -i "s/_VERSION_/$VERSION/g" gitlab-runner-auth.spec
+          spectool -g -R gitlab-runner-auth.spec
+          rpmbuild -ba gitlab-runner-auth.spec
           echo "rpm_out=$(find $RPMS -name *.rpm | grep -v 'debuginfo')" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
