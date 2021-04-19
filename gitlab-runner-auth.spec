@@ -5,7 +5,7 @@ Summary:        Enables on-demand runner registration
 
 License:        MIT
 URL:            https://github.com/LLNL/gitlab-runner-auth
-Source0:        https://github.com/LLNL/gitlab-runner-auth/archive/refs/tags/%{version}.zip
+Source0:        https://github.com/LLNL/gitlab-runner-auth/archive/refs/tags/v%{version}.zip
 
 Requires:       gitlab-runner
 
