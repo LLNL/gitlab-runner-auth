@@ -15,62 +15,175 @@ import os
 import re
 import socket
 import toml
-import shutil
 import json
-import pytest
 import stat
+import pytest
+from unittest.mock import MagicMock, patch
+from httmock import HTTMock, urlmatch, response
 from pytest import fixture
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from gitlab_runner_config import (
+    Runner,
+    Executor,
+    GitLabClientManager,
+    SyncException,
+    identifying_tags,
     generate_tags,
-    list_runners,
-    runner_info,
-    valid_runner_token,
-    register_runner,
-    delete_runner,
-    update_runner_config,
-    configure_runner,
+    owner_only_permissions,
+    load_executors,
+    create_runner,
+    generate_runner_config,
 )
 
 
 base_path = os.getcwd()
 
 
-@fixture(scope="session")
-def base_url():
-    return "http://localhost:8080/api/v4/"
+@fixture
+def top_level_call_patchers():
+    create_runner_patcher = patch("gitlab_runner_config.create_runner")
+    client_manager_patcher = patch("gitlab_runner_config.GitLabClientManager")
+    runner = MagicMock()
+    runner.to_dict.return_value = {}
+    create_runner_mock = create_runner_patcher.start()
+    create_runner_mock.return_value = runner
+    yield [create_runner_mock, client_manager_patcher.start()]
+    create_runner_mock.stop()
+    client_manager_patcher.stop()
 
 
-@fixture(scope="session")
-def admin_token():
-    with open(os.path.join(base_path, "tests/resources/admin-token")) as fh:
-        return fh.read()
-
-
-@fixture(scope="session")
-def access_token():
-    with open(os.path.join(base_path, "tests/resources/access-token")) as fh:
-        return fh.read()
-
-
-@fixture(scope="module")
-def runner_data(base_url, admin_token, access_token):
-    data = register_runner(base_url, admin_token, "test", generate_tags())
-    yield data
-    all_runner_info = (
-        runner_info(base_url, access_token, r["id"])
-        for r in list_runners(base_url, access_token)
+@fixture
+def established_prefix(tmp_path):
+    instance = "main"
+    prefix = tmp_path
+    prefix.chmod(0o700)
+    instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
+    instance_config_template_file.write_text(
+        """
+            [client_configs]
+            foo = "bar"
+        """.strip()
     )
-    for runner in all_runner_info:
-        delete_runner(base_url, runner["token"])
+    executor_dir = prefix / "main"
+    executor_dir.mkdir()
+    executor_dir.chmod(0o700)
+    return (prefix, instance)
+
+
+@fixture
+def executor_configs():
+    configs = []
+    url_tmpl = "http://localhost/{}"
+    executor_tmpl = "{}-executor"
+    for desc in ["foo", "bar"]:
+        configs.append(
+            {
+                "description": "runner-{}".format(desc),
+                "url": url_tmpl.format(desc),
+                "executor": executor_tmpl.format(desc),
+            }
+        )
+    return configs
+
+
+@fixture
+def client_configs():
+    configs = []
+    url_tmpl = "http://localhost/{}"
+    for server in ["foo", "bar"]:
+        configs.append(
+            {
+                "registration_token": server,
+                "url": url_tmpl.format(server),
+                "personal_access_token": server,
+            }
+        )
+    return configs
+
+
+@fixture
+def runner_config(client_configs):
+    return {"name": "foo", "client_configs": client_configs}
+
+
+@fixture
+def executor_tomls_dir(executor_configs):
+    td = TemporaryDirectory()
+    for config in executor_configs:
+        with open(td.name / Path(config["description"] + ".toml"), "w") as f:
+            toml.dump(config, f)
+    yield Path(td.name)
+    td.cleanup()
+
+
+@fixture
+def executor(executor_configs):
+    yield Executor(executor_configs)
+
+
+@fixture
+def url_matchers():
+    runners = [{"id": 1}, {"id": 2}]
+
+    @urlmatch(path=r".*\/api\/v4\/runners/all$", method="get")
+    def runner_list_resp(url, request):
+        headers = {"content-type": "application/json"}
+        content = json.dumps(runners)
+        return response(200, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners\/\d+$", method="get")
+    def runner_detail_resp(url, request):
+        runner_id = url.path.split("/")[-1]
+        headers = {"content-type": "application/json"}
+        content = json.dumps(
+            {
+                "id": runner_id,
+                "token": "token",
+                "description": "runner-{}".format(runner_id),
+            }
+        )
+        return response(200, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners\/\d+$", method="delete")
+    def runner_delete_resp(url, request):
+        runner_id = url.path.split("/")[-1]
+        headers = {"content-type": "application/json"}
+        content = json.dumps(
+            {
+                "id": runner_id,
+                "token": "token",
+                "description": "runner-{}".format(runner_id),
+            }
+        )
+        return response(204, content, headers, None, 5, request)
+
+    @urlmatch(path=r".*\/api\/v4\/runners$", method="post")
+    def runner_registration_resp(url, request):
+        headers = {"content-type": "application/json"}
+        # TODO id from request
+        content = json.dumps(
+            {
+                "id": 3,
+                "token": "token",
+                "description": "runner-{}".format(3),
+            }
+        )
+        return response(201, content, headers, None, 5, request)
+
+    return (
+        runner_list_resp,
+        runner_detail_resp,
+        runner_delete_resp,
+        runner_registration_resp,
+    )
 
 
 def test_generate_tags():
     tags = generate_tags()
     hostname = socket.gethostname()
-    assert hostname == tags[0]
-    assert re.sub(r"\d", "", hostname) == tags[1]
+    assert hostname in tags
+    assert re.sub(r"\d", "", hostname) in tags
 
     # test finding a resource manager
     with TemporaryDirectory() as td:
@@ -85,92 +198,177 @@ def test_generate_tags():
         def get_tags(exe):
             Path(exe).touch()
             os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(runner_type="batch")
+            tags = generate_tags(executor_type="batch")
             os.unlink(exe)
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
 
 
-def test_valid_runner_token(base_url, runner_data):
-    assert valid_runner_token(base_url, runner_data["token"])
+def test_generate_tags_env():
+    env_name = "TEST_TAG"
+    missing_env_name = "TEST_MISSING_TAG"
+    env_val = "tag"
+    os.environ[env_name] = env_val
+    tags = generate_tags(env=[env_name, missing_env_name])
+
+    assert env_val in tags
+
+    tags = generate_tags(env=[missing_env_name])
+    assert set(identifying_tags()) == set(tags)
+
+    tags = generate_tags(env=[])
+    assert set(identifying_tags()) == set(tags)
 
 
-def test_update_runner_config(runner_data):
+def test_owner_only_permissions():
     with TemporaryDirectory() as td:
-        config_file = os.path.join(td, "config.toml")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        data = {
-            "shell": runner_data,
-            "batch": runner_data,
-        }
-        update_runner_config(config_template, config_file, data)
+        d = Path(td)
+        os.chmod(d, 0o700)
+        assert owner_only_permissions(d)
 
-        with open(config_file) as fh:
-            runner_config = toml.load(fh)
-            assert all(
-                r["token"] == runner_data["token"] for r in runner_config["runners"]
-            )
+        os.chmod(d, 0o750)
+        assert not owner_only_permissions(d)
 
+        os.chmod(d, 0o705)
+        assert not owner_only_permissions(d)
 
-# end to end
+        os.chmod(d, 0o755)
+        assert not owner_only_permissions(d)
 
 
-def test_configure_runner(base_url, admin_token):
-    with TemporaryDirectory() as td:
-        access_token_file = os.path.join(base_path, "tests/resources/access-token")
-        token_file = os.path.join(base_path, "tests/resources/admin-token")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        shutil.copy(access_token_file, td)
-        shutil.copy(token_file, td)
-        shutil.copy(config_template, td)
+class TestExecutor:
+    def test_normalize(self, executor):
+        executor.normalize()
+        assert all(c.get("description") for c in executor.configs)
+        assert all(c.get("tags") for c in executor.configs)
 
-        configure_runner(td, base_url)
+    def test_missing_token(self, executor):
+        url = executor.configs[0]["url"]
+        assert len(executor.missing_token(url)) == 1
+        for e in executor.missing_token(url):
+            e["token"] = "token"
+        assert len(executor.missing_token(url)) == 0
 
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh)
+    def test_missing_required_config(self, executor):
+        assert len(executor.missing_required_config()) == len(executor.configs)
 
-        # running twice with a config file in existence will traverse another
-        # code path
-        configure_runner(td, base_url)
+    def test_load_executors(self, executor_configs, executor_tomls_dir):
+        executor = load_executors(executor_tomls_dir)
+        assert len(executor.configs) == len(executor_configs)
 
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh)
+    def test_load_executors_no_files(self, executor_tomls_dir):
+        with TemporaryDirectory() as td:
+            executor = load_executors(Path(td))
+            assert len(executor.configs) == 0
 
-        # originally configured with shell and batch runners, lets make
-        # sure that data is in `runner-data.json`
-        with open(os.path.join(td, "runner-data.json")) as fh:
-            runner_data = json.load(fh)
-            assert all(r_type in runner_data for r_type in ["shell", "batch"])
+    def test_load_executors_extra_file(self, executor_configs, executor_tomls_dir):
+        with open(executor_tomls_dir / "bat", "w") as fh:
+            fh.write("bat")
+
+        # loaded executors should only consider .toml files
+        executor = load_executors(executor_tomls_dir)
+        assert len(executor.configs) == len(executor_configs)
 
 
-def test_configure_runner_stateless(base_url, admin_token):
-    with TemporaryDirectory() as td:
-        token_file = os.path.join(base_path, "tests/resources/admin-token")
-        access_token_file = os.path.join(base_path, "tests/resources/access-token")
-        config_template = os.path.join(base_path, "tests/resources/config.template")
-        shutil.copy(token_file, td)
-        shutil.copy(config_template, td)
+class TestRunner:
+    def test_create(self, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, executor_tomls_dir)
+        assert runner_config.get("client_configs") is not None
+        assert runner.config is not None
+        assert runner.executor is not None
 
-        # fails without an access token
+    def test_empty(self, runner_config):
+        runner = Runner(runner_config, Executor([]))
+        assert runner.empty()
+
+    def test_to_dict(self, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, executor_tomls_dir)
+        runner_dict = runner.to_dict()
+        assert type(runner_dict.get("runners")) == list
+        assert toml.dumps(runner_dict)
+
+
+class TestGitLabClientManager:
+    def setup_method(self, method):
+        self.runner = MagicMock()
+
+    def test_init(self, client_configs):
+        client_manager = GitLabClientManager(client_configs)
+        assert client_manager.clients
+        assert client_manager.registration_tokens
+
+    def test_sync_runner_state(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.add_token.assert_called()
+
+    def test_sync_runner_state_delete(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+        self.runner.executor.add_token.side_effect = KeyError("Missing key!")
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.add_token.assert_called()
+
+    def test_sync_runner_state_missing(self, client_configs, url_matchers):
+        client_manager = GitLabClientManager(client_configs)
+        self.runner.executor.missing_token.return_value = [
+            {"description": "bat", "tags": ["bat", "bam"]}
+        ]
+
+        with HTTMock(*url_matchers):
+            client_manager.sync_runner_state(self.runner)
+            self.runner.executor.missing_token.assert_called()
+            for config in client_configs:
+                self.runner.executor.missing_token.assert_any_call(config["url"])
+            self.runner.executor.add_token.assert_called()
+
+
+class TestGitLabRunnerConfig:
+    def test_generate_runner_config(self, established_prefix, top_level_call_patchers):
+        generate_runner_config(*established_prefix)
+
+    def test_generate_runner_config_invalid_prefix_perms(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        prefix.chmod(0o777)
+
         with pytest.raises(SystemExit):
-            configure_runner(td, base_url, stateless=True)
+            generate_runner_config(prefix, instance)
 
-        shutil.copy(access_token_file, td)
-        configure_runner(td, base_url, stateless=True)
+    def test_generate_runner_config_invalid_executor_perms(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        executor_dir = prefix / instance
+        executor_dir.chmod(0o777)
 
-        with open(os.path.join(td, "config.toml")) as fh:
-            config = toml.load(fh)
-            assert config
-            assert len(config["runners"]) == 2
-            assert all(r["token"] for r in config["runners"])
+        with pytest.raises(SystemExit):
+            generate_runner_config(prefix, instance)
 
-        # run a second time, we should get the config.toml back
-        # and the same runner tokens
-        os.unlink(os.path.join(td, "config.toml"))
-        configure_runner(td, base_url, stateless=True)
+    def test_generate_runner_config_missing(
+        self, established_prefix, top_level_call_patchers
+    ):
+        prefix, instance = established_prefix
+        instance_config_template_file = prefix / "config.template.{}.toml".format(
+            instance
+        )
+        instance_config_template_file.unlink()
 
-        with open(os.path.join(td, "config.toml")) as fh:
-            assert toml.load(fh) == config
-            assert len(config["runners"]) == 2
-            assert all(r["token"] for r in config["runners"])
+        with pytest.raises(SystemExit):
+            generate_runner_config(prefix, instance)
+
+    def test_generate_runner_sync_error(
+        self, established_prefix, top_level_call_patchers
+    ):
+
+        manager = MagicMock()
+        manager.sync_runner_state.side_effect = SyncException("oh no!")
+        _, client_manager_patcher = top_level_call_patchers
+        client_manager_patcher.return_value = manager
+
+        with pytest.raises(SystemExit):
+            generate_runner_config(*established_prefix)

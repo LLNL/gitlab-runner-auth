@@ -1,0 +1,10 @@
+concurrent = 8
+check_interval = 0
+
+client_configs = [
+  {
+    url = "https://gitlab.example.com",
+    registration_token = "{registration_token}",
+    personal_access_token = "{personal_access_token}"
+  }
+]
