@@ -1,11 +1,11 @@
 Name:           gitlab-runner-auth
-Version:        v0.1.0
+Version:        _VERSION_
 Release:        1%{?dist}
 Summary:        Enables on-demand runner registration
 
 License:        MIT
 URL:            https://github.com/LLNL/gitlab-runner-auth
-Source0:        https://github.com/LLNL/gitlab-runner-auth/archive/refs/tags/%{version}.zip
+Source0:        https://github.com/LLNL/gitlab-runner-auth/archive/refs/tags/v%{version}.zip
 
 Requires:       gitlab-runner
 

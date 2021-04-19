@@ -21,10 +21,11 @@ jobs:
           yum install -y rpmdevtools python3
           rpmdev-setuptree
           export RPM_BUILD=$HOME/rpmbuild
-          export SPECS=$RPM_BUILD/SPECS RPMS=$RPM_BUILD/RPMS
+          export SPECS=$RPM_BUILD/SPECS RPMS=$RPM_BUILD/RPMS VERSION=$(python3 -c "print(\"${{ github.ref }}\".split('/').pop()[1:])")
           cp gitlab-runner-auth.spec $SPECS && cd $SPECS
-          spectool -d "version ${{ github.ref }}" -g -R gitlab-runner-auth.spec
-          rpmbuild -ba -d "version ${{ github.ref }}" gitlab-runner-auth.spec
+          sed -i "s/_VERSION_/$VERSION/g" gitlab-runner-auth.spec
+          spectool -g -R gitlab-runner-auth.spec
+          rpmbuild -ba gitlab-runner-auth.spec
           echo "rpm_out=$(find $RPMS -name *.rpm | grep -v 'debuginfo')" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
