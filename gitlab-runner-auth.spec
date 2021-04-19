@@ -1,5 +1,5 @@
 Name:           gitlab-runner-auth
-Version:        0.1.0
+Version:        0.0.0
 Release:        1%{?dist}
 Summary:        Enables on-demand runner registration
 
@@ -20,6 +20,7 @@ This script is meant to be run as part of the ExecStartPre script in the systemd
 
 
 %install
+mkdir -p /etc/gitlab-runner
 install -m 0700 register-runner /etc/gitlab-runner/register-runner
 
 

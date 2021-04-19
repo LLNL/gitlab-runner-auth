@@ -1,6 +1,9 @@
 name: LLNL GitLab Runner Auth Testing
 
-on: [pull_request]
+on:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build:

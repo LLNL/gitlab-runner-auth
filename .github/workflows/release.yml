@@ -1,18 +1,15 @@
-on:
-  push:
-    tags:
-      - 'v*'
+on: [push]
 
 name: Create and upload Release of GitLab Runner Auth
 
 jobs:
   build:
     name: Create Release
-    runs-on: centos-7
-    env:
-      RPM_BUILD: $HOME/rpmbuild
-      SPECS: $RPM_BUILD/SPECS
-      RPMS: $RPM_BUILD/RPMS
+    runs-on: ubuntu-latest
+    container:
+      image: centos:7
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -20,17 +17,15 @@ jobs:
         run: |
           yum install -y rpmdevtools python3
           rpmdev-setuptree
-          cp gitlab-runner-auth.spec $SPECS
-          cd $SPECS
+          export RPM_BUILD=$HOME/rpmbuild
+          export SPECS=$RPM_BUILD/SPECS RPMS=$RPM_BUILD/RPMS
+          cp gitlab-runner-auth.spec $SPECS && cd $SPECS
           spectool -g -R gitlab-runner-auth.spec
           rpmbuild -ba gitlab-runner-auth.spec
-          RPM=$(find $RPMS -name *.rpm | grep -v "debuginfo")
-          echo '::set-env name=RPM::$RPM'
+          echo "rpm_out=$(find $RPMS -name *.rpm | grep -v 'debuginfo')" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
@@ -39,10 +34,8 @@ jobs:
       - name: Upload Release Asset
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: $RPM
+          asset_path: ${{ env.rpm_out }}
           asset_name: gitlab-runner-auth.rpm
           asset_content_type: application/zip
