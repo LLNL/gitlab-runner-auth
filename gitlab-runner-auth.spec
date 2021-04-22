@@ -20,12 +20,13 @@ This script is meant to be run as part of the ExecStartPre script in the systemd
 
 
 %install
-mkdir -p /etc/gitlab-runner
-install -m 0700 register-runner /etc/gitlab-runner/register-runner
+install --directory $RPM_BUILD_ROOT/etc/gitlab-runner
+install -m 0700 register-runner $RPM_BUILD_ROOT/etc/gitlab-runner/register-runner
 
 
 %files
 %doc README.md
+/etc/gitlab-runner/register-runner
 
 
 
