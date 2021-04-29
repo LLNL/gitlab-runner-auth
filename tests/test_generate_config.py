@@ -184,6 +184,19 @@ def url_matchers():
     )
 
 
+def test_setup_tags(instance):
+    hostname = socket.gethostname()
+    trimmed_hostname = re.sub(r"\d", "", hostname)
+    with pytest.raises(ValueError, match="instance name cannot be"):
+        setup_identifiers("managed")
+
+    with pytest.raises(ValueError, match="instance name cannot be"):
+        setup_identifiers(hostname)
+
+    with pytest.raises(ValueError, match="instance name cannot be"):
+        setup_identifiers(trimmed_hostname)
+
+
 def test_generate_tags(instance):
     setup_identifiers(instance)
     tags = generate_tags()

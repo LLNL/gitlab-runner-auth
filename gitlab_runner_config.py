@@ -39,6 +39,8 @@ IDENTIFYING_TAGS = list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
 
 
 def setup_identifiers(instance):
+    if instance in IDENTIFYING_TAGS:
+        raise ValueError("instance name cannot be {}".format(IDENTIFYING_TAGS))
     IDENTIFYING_TAGS.append(instance)
 
 
