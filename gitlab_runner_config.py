@@ -35,9 +35,11 @@ LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
+IDENTIFYING_TAGS = list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
 
-def identifying_tags():
-    return list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
+
+def setup_identifiers(instance):
+    IDENTIFYING_TAGS.append(instance)
 
 
 def generate_tags(executor_type="", env=None):
@@ -50,7 +52,7 @@ def generate_tags(executor_type="", env=None):
     on the appropriate host.
     """
 
-    tags = identifying_tags()
+    tags = IDENTIFYING_TAGS
     if executor_type:
         tags.append(executor_type)
     if env:
@@ -134,7 +136,7 @@ class GitLabClientManager:
     def sync_runner_state(self, runner):
         try:
             for url, client in self.clients.items():
-                for r in client.runners.all(tag_list=identifying_tags()):
+                for r in client.runners.all(tag_list=IDENTIFYING_TAGS):
                     info = client.runners.get(r.id)
                     try:
                         logger.info(
@@ -262,4 +264,5 @@ if __name__ == "__main__":
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
     args = parser.parse_args()
+    setup_identifiers(args.service_instance)
     generate_runner_config(Path(args.prefix), args.service_instance)

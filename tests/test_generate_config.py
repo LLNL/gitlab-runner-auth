@@ -28,7 +28,7 @@ from gitlab_runner_config import (
     Executor,
     GitLabClientManager,
     SyncException,
-    identifying_tags,
+    setup_identifiers,
     generate_tags,
     owner_only_permissions,
     load_executors,
@@ -38,6 +38,11 @@ from gitlab_runner_config import (
 
 
 base_path = os.getcwd()
+
+
+@fixture
+def instance():
+    return "main"
 
 
 @fixture
@@ -179,9 +184,11 @@ def url_matchers():
     )
 
 
-def test_generate_tags():
+def test_generate_tags(instance):
+    setup_identifiers(instance)
     tags = generate_tags()
     hostname = socket.gethostname()
+    assert instance in tags
     assert hostname in tags
     assert re.sub(r"\d", "", hostname) in tags
 
@@ -213,12 +220,7 @@ def test_generate_tags_env():
     tags = generate_tags(env=[env_name, missing_env_name])
 
     assert env_val in tags
-
-    tags = generate_tags(env=[missing_env_name])
-    assert set(identifying_tags()) == set(tags)
-
-    tags = generate_tags(env=[])
-    assert set(identifying_tags()) == set(tags)
+    assert missing_env_name not in tags
 
 
 def test_owner_only_permissions():
