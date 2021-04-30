@@ -35,20 +35,16 @@ LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
-IDENTIFYING_TAGS = list(set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"]))
+
+def identifying_tags(instance):
+    identifiers = set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"])
+    if instance in identifiers:
+        raise ValueError("instance name cannot be {}".format(identifiers))
+    identifiers.add(instance)
+    return list(identifiers)
 
 
-def setup_identifiers(instance):
-    if instance in IDENTIFYING_TAGS:
-        raise ValueError("instance name cannot be {}".format(IDENTIFYING_TAGS))
-    IDENTIFYING_TAGS.append(instance)
-
-
-def identifying_tags():
-    return list(IDENTIFYING_TAGS)
-
-
-def generate_tags(executor_type="", env=None):
+def generate_tags(instance, executor_type="", env=None):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -58,7 +54,7 @@ def generate_tags(executor_type="", env=None):
     on the appropriate host.
     """
 
-    tags = identifying_tags()
+    tags = identifying_tags(instance)
     if executor_type:
         tags.append(executor_type)
     if env:
@@ -88,17 +84,20 @@ class Runner:
 
 
 class Executor:
-    def __init__(self, configs):
+    def __init__(self, instance, configs):
         self.by_description = {}
+        self.instance = instance
         self.configs = configs
         self.normalize()
 
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
-            c["tags"] = generate_tags(executor_type=executor, env=c.get("env_tags"))
-            c["description"] = "{host} {executor} Runner".format(
-                host=HOSTNAME, executor=executor
+            c["tags"] = generate_tags(
+                self.instance, executor_type=executor, env=c.get("env_tags")
+            )
+            c["description"] = "{host} {instance} {executor} Runner".format(
+                host=HOSTNAME, instance=self.instance, executor=executor
             )
         self.by_description = {c["description"]: c for c in self.configs}
 
@@ -128,9 +127,10 @@ class SyncException(Exception):
 
 
 class GitLabClientManager:
-    def __init__(self, client_configs):
+    def __init__(self, instance, client_configs):
         self.clients = {}
         self.registration_tokens = {}
+        self.instance = instance
         for client_config in client_configs:
             url = client_config["url"]
             self.registration_tokens[url] = client_config["registration_token"]
@@ -142,7 +142,9 @@ class GitLabClientManager:
     def sync_runner_state(self, runner):
         try:
             for url, client in self.clients.items():
-                for r in client.runners.all(tag_list=",".join(identifying_tags())):
+                for r in client.runners.all(
+                    tag_list=",".join(identifying_tags(self.instance))
+                ):
                     info = client.runners.get(r.id)
                     try:
                         logger.info(
@@ -189,18 +191,18 @@ class GitLabClientManager:
             )
 
 
-def load_executors(template_dir):
+def load_executors(instance, template_dir):
     executor_configs = []
     for executor_toml in template_dir.glob("*.toml"):
         with executor_toml.open() as et:
             executor_configs.append(toml.load(et))
-    return Executor(executor_configs)
+    return Executor(instance, executor_configs)
 
 
-def create_runner(config, template_dir):
+def create_runner(config, instance, template_dir):
     config_copy = dict(config)
     del config_copy["client_configs"]
-    return Runner(config_copy, load_executors(template_dir))
+    return Runner(config_copy, load_executors(instance, template_dir))
 
 
 def owner_only_permissions(path):
@@ -238,11 +240,11 @@ def generate_runner_config(prefix, instance):
         logger.error(e)
         sys.exit(1)
 
-    runner = create_runner(config, executor_template_dir)
+    runner = create_runner(config, instance, executor_template_dir)
     logger.info(
         "loaded executors from {templates}".format(templates=executor_template_dir)
     )
-    client_manager = GitLabClientManager(config["client_configs"])
+    client_manager = GitLabClientManager(instance, config["client_configs"])
     try:
         logger.info("syncing state with GitLab(s)")
         client_manager.sync_runner_state(runner)
@@ -270,5 +272,4 @@ if __name__ == "__main__":
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
     args = parser.parse_args()
-    setup_identifiers(args.service_instance)
     generate_runner_config(Path(args.prefix), args.service_instance)
