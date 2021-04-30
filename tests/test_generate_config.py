@@ -170,6 +170,10 @@ def url_matchers():
 
     @urlmatch(path=r".*\/api\/v4\/runners$", method="post")
     def runner_registration_resp(url, request):
+        # All registered runners must be qualified by tags
+        body = json.loads(request.body.decode())
+        assert "tag_list" in body
+        assert len(body["tag_list"].split(","))
         headers = {"content-type": "application/json"}
         # TODO id from request
         content = json.dumps(
