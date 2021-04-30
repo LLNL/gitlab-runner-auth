@@ -137,7 +137,9 @@ def url_matchers():
         query = parse_qs(url.query)
         # All calls by this utility must be qualified by tags
         assert "tag_list" in query
-        assert len(query["tag_list"].pop().split(","))
+        tag_list = query["tag_list"].pop().split(",")
+        assert len(tag_list)
+        assert len(tag_list) == len(set(tag_list))
         headers = {"content-type": "application/json"}
         content = json.dumps(runners)
         return response(200, content, headers, None, 5, request)
@@ -173,7 +175,9 @@ def url_matchers():
         # All registered runners must be qualified by tags
         body = json.loads(request.body.decode())
         assert "tag_list" in body
-        assert len(body["tag_list"].split(","))
+        tag_list = body["tag_list"].split(",")
+        assert len(tag_list)
+        assert len(tag_list) == len(set(tag_list))
         headers = {"content-type": "application/json"}
         # TODO id from request
         content = json.dumps(
