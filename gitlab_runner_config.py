@@ -93,10 +93,11 @@ class Executor:
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
-            c["description"] = "{host} {executor} Runner".format(
-                host=HOSTNAME, executor=executor
             c["tags"] = generate_tags(
                 self.instance, executor_type=executor, env=c.get("env_tags")
+            )
+            c["description"] = "{host} {instance} {executor} Runner".format(
+                host=HOSTNAME, instance=self.instance, executor=executor
             )
         self.by_description = {c["description"]: c for c in self.configs}
 
