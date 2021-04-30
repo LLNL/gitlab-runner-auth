@@ -19,6 +19,7 @@ import json
 import stat
 import pytest
 from unittest.mock import MagicMock, patch
+from urllib.parse import parse_qs
 from httmock import HTTMock, urlmatch, response
 from pytest import fixture
 from pathlib import Path
@@ -133,6 +134,10 @@ def url_matchers():
 
     @urlmatch(path=r".*\/api\/v4\/runners/all$", method="get")
     def runner_list_resp(url, request):
+        query = parse_qs(url.query)
+        # All calls by this utility must be qualified by tags
+        assert "tag_list" in query
+        assert len(query["tag_list"].pop().split(","))
         headers = {"content-type": "application/json"}
         content = json.dumps(runners)
         return response(200, content, headers, None, 5, request)

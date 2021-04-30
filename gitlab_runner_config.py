@@ -138,7 +138,7 @@ class GitLabClientManager:
     def sync_runner_state(self, runner):
         try:
             for url, client in self.clients.items():
-                for r in client.runners.all(tag_list=IDENTIFYING_TAGS):
+                for r in client.runners.all(tag_list=",".join(IDENTIFYING_TAGS)):
                     info = client.runners.get(r.id)
                     try:
                         logger.info(
