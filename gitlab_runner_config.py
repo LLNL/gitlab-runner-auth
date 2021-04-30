@@ -44,6 +44,10 @@ def setup_identifiers(instance):
     IDENTIFYING_TAGS.append(instance)
 
 
+def identifying_tags():
+    return list(IDENTIFYING_TAGS)
+
+
 def generate_tags(executor_type="", env=None):
     """The set of tags for a host
 
@@ -54,7 +58,7 @@ def generate_tags(executor_type="", env=None):
     on the appropriate host.
     """
 
-    tags = IDENTIFYING_TAGS
+    tags = identifying_tags()
     if executor_type:
         tags.append(executor_type)
     if env:
@@ -138,7 +142,7 @@ class GitLabClientManager:
     def sync_runner_state(self, runner):
         try:
             for url, client in self.clients.items():
-                for r in client.runners.all(tag_list=",".join(IDENTIFYING_TAGS)):
+                for r in client.runners.all(tag_list=",".join(identifying_tags())):
                     info = client.runners.get(r.id)
                     try:
                         logger.info(
