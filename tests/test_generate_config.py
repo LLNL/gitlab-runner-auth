@@ -29,7 +29,7 @@ from gitlab_runner_config import (
     Executor,
     GitLabClientManager,
     SyncException,
-    setup_identifiers,
+    identifying_tags,
     generate_tags,
     owner_only_permissions,
     load_executors,
@@ -60,8 +60,7 @@ def top_level_call_patchers():
 
 
 @fixture
-def established_prefix(tmp_path):
-    instance = "main"
+def established_prefix(instance, tmp_path):
     prefix = tmp_path
     prefix.chmod(0o700)
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
@@ -124,8 +123,8 @@ def executor_tomls_dir(executor_configs):
 
 
 @fixture
-def executor(executor_configs):
-    yield Executor(executor_configs)
+def executor(instance, executor_configs):
+    yield Executor(instance, executor_configs)
 
 
 @fixture
@@ -197,22 +196,21 @@ def url_matchers():
     )
 
 
-def test_setup_tags(instance):
+def test_identifying_tags(instance):
     hostname = socket.gethostname()
     trimmed_hostname = re.sub(r"\d", "", hostname)
     with pytest.raises(ValueError, match="instance name cannot be"):
-        setup_identifiers("managed")
+        identifying_tags("managed")
 
     with pytest.raises(ValueError, match="instance name cannot be"):
-        setup_identifiers(hostname)
+        identifying_tags(hostname)
 
     with pytest.raises(ValueError, match="instance name cannot be"):
-        setup_identifiers(trimmed_hostname)
+        identifying_tags(trimmed_hostname)
 
 
 def test_generate_tags(instance):
-    setup_identifiers(instance)
-    tags = generate_tags()
+    tags = generate_tags(instance)
     hostname = socket.gethostname()
     assert instance in tags
     assert hostname in tags
@@ -231,19 +229,19 @@ def test_generate_tags(instance):
         def get_tags(exe):
             Path(exe).touch()
             os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(executor_type="batch")
+            tags = generate_tags(instance, executor_type="batch")
             os.unlink(exe)
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
 
 
-def test_generate_tags_env():
+def test_generate_tags_env(instance):
     env_name = "TEST_TAG"
     missing_env_name = "TEST_MISSING_TAG"
     env_val = "tag"
     os.environ[env_name] = env_val
-    tags = generate_tags(env=[env_name, missing_env_name])
+    tags = generate_tags(instance, env=[env_name, missing_env_name])
 
     assert env_val in tags
     assert missing_env_name not in tags
@@ -281,13 +279,13 @@ class TestExecutor:
     def test_missing_required_config(self, executor):
         assert len(executor.missing_required_config()) == len(executor.configs)
 
-    def test_load_executors(self, executor_configs, executor_tomls_dir):
-        executor = load_executors(executor_tomls_dir)
+    def test_load_executors(self, instance, executor_configs, executor_tomls_dir):
+        executor = load_executors(instance, executor_tomls_dir)
         assert len(executor.configs) == len(executor_configs)
 
-    def test_load_executors_no_files(self, executor_tomls_dir):
+    def test_load_executors_no_files(self, instance, executor_tomls_dir):
         with TemporaryDirectory() as td:
-            executor = load_executors(Path(td))
+            executor = load_executors(instance, Path(td))
             assert len(executor.configs) == 0
 
     def test_load_executors_extra_file(self, executor_configs, executor_tomls_dir):
@@ -295,23 +293,23 @@ class TestExecutor:
             fh.write("bat")
 
         # loaded executors should only consider .toml files
-        executor = load_executors(executor_tomls_dir)
+        executor = load_executors(instance, executor_tomls_dir)
         assert len(executor.configs) == len(executor_configs)
 
 
 class TestRunner:
-    def test_create(self, runner_config, executor_tomls_dir):
-        runner = create_runner(runner_config, executor_tomls_dir)
+    def test_create(self, instance, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, instance, executor_tomls_dir)
         assert runner_config.get("client_configs") is not None
         assert runner.config is not None
         assert runner.executor is not None
 
-    def test_empty(self, runner_config):
-        runner = Runner(runner_config, Executor([]))
+    def test_empty(self, instance, runner_config):
+        runner = Runner(runner_config, Executor(instance, []))
         assert runner.empty()
 
-    def test_to_dict(self, runner_config, executor_tomls_dir):
-        runner = create_runner(runner_config, executor_tomls_dir)
+    def test_to_dict(self, instance, runner_config, executor_tomls_dir):
+        runner = create_runner(runner_config, instance, executor_tomls_dir)
         runner_dict = runner.to_dict()
         assert type(runner_dict.get("runners")) == list
         assert toml.dumps(runner_dict)
@@ -321,27 +319,27 @@ class TestGitLabClientManager:
     def setup_method(self, method):
         self.runner = MagicMock()
 
-    def test_init(self, client_configs):
-        client_manager = GitLabClientManager(client_configs)
+    def test_init(self, instance, client_configs):
+        client_manager = GitLabClientManager(instance, client_configs)
         assert client_manager.clients
         assert client_manager.registration_tokens
 
-    def test_sync_runner_state(self, client_configs, url_matchers):
-        client_manager = GitLabClientManager(client_configs)
+    def test_sync_runner_state(self, instance, client_configs, url_matchers):
+        client_manager = GitLabClientManager(instance, client_configs)
 
         with HTTMock(*url_matchers):
             client_manager.sync_runner_state(self.runner)
             self.runner.executor.add_token.assert_called()
 
-    def test_sync_runner_state_delete(self, client_configs, url_matchers):
-        client_manager = GitLabClientManager(client_configs)
+    def test_sync_runner_state_delete(self, instance, client_configs, url_matchers):
+        client_manager = GitLabClientManager(instance, client_configs)
         self.runner.executor.add_token.side_effect = KeyError("Missing key!")
         with HTTMock(*url_matchers):
             client_manager.sync_runner_state(self.runner)
             self.runner.executor.add_token.assert_called()
 
-    def test_sync_runner_state_missing(self, client_configs, url_matchers):
-        client_manager = GitLabClientManager(client_configs)
+    def test_sync_runner_state_missing(self, instance, client_configs, url_matchers):
+        client_manager = GitLabClientManager(instance, client_configs)
         self.runner.executor.missing_token.return_value = [
             {"description": "bat", "tags": ["bat", "bam"]}
         ]
