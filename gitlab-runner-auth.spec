@@ -7,6 +7,7 @@ License:        MIT
 URL:            https://github.com/LLNL/gitlab-runner-auth
 Source0:        https://github.com/LLNL/gitlab-runner-auth/archive/refs/tags/v%{version}.zip
 
+BuildArch:      noarch
 Requires:       gitlab-runner
 
 %description

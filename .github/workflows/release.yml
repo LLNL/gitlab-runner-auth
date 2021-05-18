@@ -13,19 +13,31 @@ jobs:
       image: centos:7
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
       - name: Package
         run: |
-          yum install -y rpmdevtools python3
+          yum install -y rpmdevtools rpm-sign python3
           rpmdev-setuptree
+          echo -n "$GPG_SIGNING_KEY" | base64 --decode | gpg --import
+          cat << RPMMACROS >> $HOME/.rpmmacros
+          %_signature gpg
+          %_gpg_path $HOME/.gnupg
+          %_gpg_name GitHub Builder
+          %_gpg_check_password_cmd %{__gpg} \
+            gpg --batch --no-verbose --passphrase-fd 0 -u "%{_gpg_name}" -so -
+          %_gpg_sign_cmd %{__gpg} \
+            gpg --no-verbose --no-armor \
+            -u "%{_gpg_name}" -sbo %{__signature_filename} %{__plaintext_filename}
+          RPMMACROS
           export RPM_BUILD=$HOME/rpmbuild
           export SPECS=$RPM_BUILD/SPECS RPMS=$RPM_BUILD/RPMS VERSION=$(python3 -c "print(\"${{ github.ref }}\".split('/').pop()[1:])")
           cp gitlab-runner-auth.spec $SPECS && cd $SPECS
           sed -i "s/_VERSION_/$VERSION/g" gitlab-runner-auth.spec
           spectool -g -R gitlab-runner-auth.spec
-          rpmbuild -ba gitlab-runner-auth.spec
+          echo "" | setsid rpmbuild -bb --sign gitlab-runner-auth.spec
           echo "rpm_out=$(find $RPMS -name *.rpm | grep -v 'debuginfo')" >> $GITHUB_ENV
       - name: Create Release
         id: create_release
