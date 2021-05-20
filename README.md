@@ -16,7 +16,9 @@ executors and finally write out a valid `config.toml` file on a per-host basis.
 ```
 
 The `config.template.{executors_folder}.toml` contains the same `gitlab-runner`
-config, as [specified in GitLab's documentation](https://docs.gitlab.com/runner/configuration/advanced-configuration.html).
+config, as [specified in GitLab's documentation](https://docs.gitlab.com/runner/configuration/advanced-configuration.html) sans executor `[[runners]]` sections.
+The executor configs are individually defined as toml files in `executors_folder`.
+
 In addition, a special property `client_configs` must be specified as an array
 of hashes with information on connecting to the GitLab instance you're
 registering the runner with. This looks like:
@@ -32,8 +34,10 @@ client_configs = [
 ]
 ```
 
-The `url` property will be used to match `executors` in the `executors_folder`
+* The `url` property will be used to match `executors` in the `executors_folder`
 during the sync process.
+* The `registration_token` is the admin-level shared-runner registration token.
+* The `personal_access_token` is an admin-level PAT with API read/write scope.
 
 The `executors_folder` houses any number of `executor` configurations in `toml`
 format. A shell runner that will be configured using the above example client
