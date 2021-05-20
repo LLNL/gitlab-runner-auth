@@ -1,5 +1,5 @@
---- runner_details.rb.orig	2021-05-19 16:58:03.000000000 -0700
-+++ runner_details.rb	2021-05-19 16:58:18.000000000 -0700
+--- lib/api/entities/runner_details.rb.orig	2021-05-19 16:58:03.000000000 -0700
++++ lib/api/entities/runner_details.rb	2021-05-19 16:58:18.000000000 -0700
 @@ -10,6 +10,7 @@
        expose :access_level
        expose :version, :revision, :platform, :architecture
