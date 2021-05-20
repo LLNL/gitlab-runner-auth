@@ -68,7 +68,8 @@ executor state in `main` with the target GitLab instance(s) specified in
 Additionally, this tool required a feature that has since been deprecated by
 GitLab. Previously, for privileged (admin) calls to the API, the runner info
 endpoint would return the token for the associated runner. To enable this
-feature again, a GitLab server patch is provided with this repo.
+feature again, a GitLab server patch modifying `gitlab-rails`
+`lib/api/entities/runner_details.rb` is provided with this repo.
 
 ## Testing
 
