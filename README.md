@@ -65,6 +65,11 @@ When starting or restarting the runner, the script will handle syncing the local
 executor state in `main` with the target GitLab instance(s) specified in
 `config.template.main.toml`.
 
+Additionally, this tool required a feature that has since been deprecated by
+GitLab. Previously, for privileged (admin) calls to the API, the runner info
+endpoint would return the token for the associated runner. To enable this
+feature again, a GitLab server patch is provided with this repo.
+
 ## Testing
 
 Testing is done using `pytest` with requirements specified in `dev-requirements.txt`
