@@ -1,0 +1,25 @@
+{
+	"$id": "https://example.com/tag_schema.json",
+	"$schema": "http://json-schema.org/schema#",
+	"title": "tag_schema",
+	"type": "object",
+	"properties": {
+		"hostname": {"type": "string"},
+		"clustername": {"type": "string"},
+		"os": { "type": "string",
+				"enum": [ "toss", "rhel8", "centos8"
+				]},
+		"architecture": {"type": "string",
+						"enum": ["x86", "aarch64", "ppc64", "arm64"]},
+		"executor": {"type": "string",
+					 "enum": ["shell", "batch", "docker", "docker-machine", "ssh", 
+					 "custom", "virtualbox"]},
+		"GPU": { "type": "string"},
+		"micro-architecture": {"type": "string"},
+		"storage-mounts": {"type" : "string"},
+		"network": {"type": "string"},
+		"target-node": {"type": "string"}
+	},
+	"required": ["hostname", "clustername", "os", "architecture", "executor"],
+	"custom-name": "custom"
+}

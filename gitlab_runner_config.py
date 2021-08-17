@@ -19,9 +19,11 @@ import sys
 import stat
 import socket
 import argparse
+import archspec.cpu
 import toml
 import logging
 import gitlab
+import json
 from pathlib import Path
 from shutil import which
 from gitlab.exceptions import (
@@ -34,7 +36,8 @@ HOSTNAME = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
-
+_schema = open('tag_schema.json',)
+tag_schema = json.load(_schema)
 
 def identifying_tags(instance):
     identifiers = set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"])
@@ -53,12 +56,32 @@ def generate_tags(instance, executor_type="", env=None):
     These tags are specified by runner configs and used by CI specs to run jobs
     on the appropriate host.
     """
-
+    arch_info = archspec.cpu.host()
     tags = identifying_tags(instance)
     if executor_type:
-        tags.append(executor_type)
+        if executor_type in tag_schema['properties']['executor']['enum']:
+            tags.append(executor_type)
+        else:
+            raise ValueError("{} is not a valid executor".format(executor_type))
     if env:
         tags += [os.environ[e] for e in env if e in os.environ]
+        for e in env:
+            #"tag schema" is to be applied here
+            if e in tag_schema['properties']['os']['enum']:
+                tags.append(e);
+            elif e in tag_schema['properties']['executor']['enum']:
+                tags.append(e);
+            elif e in arch_info.ancestors:
+                pass;
+            elif e==arch_info.name:
+                pass;
+            elif e in tag_schema['properties']['architecture']['enum']:
+                tags.append(e);
+            else:
+            # if we don't recognize the tag, prepend name 
+                tags.append(tag_schema['custom-name']+"_"+e)
+
+    # if executor is batch, gather some more system info for tags
     if executor_type == "batch":
         if which("bsub"):
             tags.append("lsf")
@@ -66,6 +89,11 @@ def generate_tags(instance, executor_type="", env=None):
             tags.append("slurm")
         elif which("cqsub"):
             tags.append("cobalt")
+
+    # append system architecture data gathered by archspec to tags
+    tags.append(arch_info.name)
+    for i in arch_info.ancestors:
+        tags.append(i.name)
     return tags
 
 
