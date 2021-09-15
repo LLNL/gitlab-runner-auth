@@ -73,8 +73,8 @@ def generate_tags(instance, executor_type="", env=None):
                 tags.append(e);
             elif e in arch_info.ancestors:
                 pass;
-            elif e==arch_info.name:
-                pass;
+            #elif e==arch_info.name:
+            #    pass;
             elif e in tag_schema['properties']['architecture']['enum']:
                 tags.append(e);
             else:
