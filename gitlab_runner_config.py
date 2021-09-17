@@ -36,8 +36,8 @@ HOSTNAME = socket.gethostname()
 LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
-_schema = open('tag_schema.json',)
-tag_schema = json.load(_schema)
+#schema = open('tag_schema.json',)
+#tag_schema = json.load(_schema)
 
 def identifying_tags(instance):
     identifiers = set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"])
@@ -47,7 +47,7 @@ def identifying_tags(instance):
     return list(identifiers)
 
 
-def generate_tags(instance, executor_type="", env=None):
+def generate_tags(instance, executor_type="", env=None, tag_schema=""):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -56,30 +56,45 @@ def generate_tags(instance, executor_type="", env=None):
     These tags are specified by runner configs and used by CI specs to run jobs
     on the appropriate host.
     """
+    use_schema = True
+    try:
+        with open(tag_schema) as fh:
+            schema = json.load(fh)
+            print(schema)
+    except FileNotFoundError:
+        use_schema = False
     arch_info = archspec.cpu.host()
     tags = identifying_tags(instance)
+    # append system architecture data gathered by archspec to tags
+    tags.append(arch_info.name)
+    for i in arch_info.ancestors:
+        tags.append(i.name)
     if executor_type:
-        if executor_type in tag_schema['properties']['executor']['enum']:
-            tags.append(executor_type)
+        if not use_schema:
+                tags.append(executor_type)
         else:
-            raise ValueError("{} is not a valid executor".format(executor_type))
+            if executor_type in schema["properties"]["executor"]["enum"]:
+                tags.append(executor_type)
+            else:
+                raise ValueError("{} is not a valid executor".format(executor_type))
     if env:
         tags += [os.environ[e] for e in env if e in os.environ]
-        for e in env:
-            #"tag schema" is to be applied here
-            if e in tag_schema['properties']['os']['enum']:
-                tags.append(e);
-            elif e in tag_schema['properties']['executor']['enum']:
-                tags.append(e);
-            elif e in arch_info.ancestors:
-                pass;
-            #elif e==arch_info.name:
-            #    pass;
-            elif e in tag_schema['properties']['architecture']['enum']:
-                tags.append(e);
-            else:
-            # if we don't recognize the tag, prepend name 
-                tags.append(tag_schema['custom-name']+"_"+e)
+        if use_schema:
+            for e in env:
+                #"tag schema" is to be applied here
+                if e in schema["properties"]["os"]["enum"]:
+                    tags.append(e);
+                elif e in schema['properties']['executor']['enum']:
+                    tags.append(e);
+                elif e in arch_info.ancestors:
+                    pass;
+                #elif e==arch_info.name:
+                #    pass;
+                elif e in tag_schema['properties']['architecture']['enum']:
+                    tags.append(e);
+                else:
+                # if we don't recognize the tag, prepend name 
+                    tags.append(tag_schema['custom-name']+"_"+e)
 
     # if executor is batch, gather some more system info for tags
     if executor_type == "batch":
@@ -90,10 +105,6 @@ def generate_tags(instance, executor_type="", env=None):
         elif which("cqsub"):
             tags.append("cobalt")
 
-    # append system architecture data gathered by archspec to tags
-    tags.append(arch_info.name)
-    for i in arch_info.ancestors:
-        tags.append(i.name)
     return tags
 
 
@@ -112,17 +123,19 @@ class Runner:
 
 
 class Executor:
-    def __init__(self, instance, configs):
+    def __init__(self, instance, configs, tag_schema=""):
         self.by_description = {}
         self.instance = instance
         self.configs = configs
+        self.tag_schema = tag_schema;
         self.normalize()
 
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
             c["tags"] = generate_tags(
-                self.instance, executor_type=executor, env=c.get("env_tags")
+                self.instance, executor_type=executor, env=c.get("env_tags"), 
+                tag_schema=self.tag_schema
             )
             c["description"] = "{host} {instance} {executor} Runner".format(
                 host=HOSTNAME, instance=self.instance, executor=executor
@@ -219,18 +232,18 @@ class GitLabClientManager:
             )
 
 
-def load_executors(instance, template_dir):
+def load_executors(instance, template_dir, tag_schema=""):
     executor_configs = []
     for executor_toml in template_dir.glob("*.toml"):
         with executor_toml.open() as et:
             executor_configs.append(toml.load(et))
-    return Executor(instance, executor_configs)
+    return Executor(instance, executor_configs, tag_schema)
 
 
-def create_runner(config, instance, template_dir):
+def create_runner(config, instance, template_dir, tag_schema=""):
     config_copy = dict(config)
     del config_copy["client_configs"]
-    return Runner(config_copy, load_executors(instance, template_dir))
+    return Runner(config_copy, load_executors(instance, template_dir, tag_schema))
 
 
 def owner_only_permissions(path):
@@ -244,7 +257,7 @@ def secure_permissions(prefix, template_dir):
     return True
 
 
-def generate_runner_config(prefix, instance):
+def generate_runner_config(prefix, instance, tag_schema=""):
     instance_config_file = prefix / "config.{}.toml".format(instance)
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
@@ -268,7 +281,7 @@ def generate_runner_config(prefix, instance):
         logger.error(e)
         sys.exit(1)
 
-    runner = create_runner(config, instance, executor_template_dir)
+    runner = create_runner(config, instance, executor_template_dir, tag_schema)
     logger.info(
         "loaded executors from {templates}".format(templates=executor_template_dir)
     )
@@ -299,5 +312,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
+    parser.add_argument(
+        "--tag-schema", default="tag_schema.json", help="""Schema to be applied for tagging executors"""
+    )
     args = parser.parse_args()
-    generate_runner_config(Path(args.prefix), args.service_instance)
+    generate_runner_config(Path(args.prefix), args.service_instance, args.tag_schema)

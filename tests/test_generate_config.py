@@ -226,14 +226,15 @@ def test_generate_tags(instance):
 
         os.environ["PATH"] += os.pathsep + td
 
-        def get_tags(exe):
+        def get_tags(exe, tag_schema=""):
             Path(exe).touch()
             os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(instance, executor_type="batch")
+            tags = generate_tags(instance, executor_type="batch", tag_schema=tag_schema)
             os.unlink(exe)
             return tags
 
         assert all(manager in get_tags(exe) for manager, exe in managers.items())
+        assert all(manager in get_tags(exe, tag_schema="tag_schema.json") for manager, exe in managers.items())
 
 
 def test_generate_tags_env(instance):
