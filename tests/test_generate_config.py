@@ -226,10 +226,14 @@ def test_generate_tags(instance):
 
         os.environ["PATH"] += os.pathsep + td
 
-        def get_tags(exe, tag_schema=""):
+        def get_tags(exe, tag_schema=None):
             Path(exe).touch()
             os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(instance, executor_type="batch", tag_schema=tag_schema)
+            schema = None
+            if tag_schema:
+                with open(tag_schema) as fh:
+                    schema = json.load(fh)
+            tags = generate_tags(instance, executor_type="batch", tag_schema=schema)
             os.unlink(exe)
             return tags
 
