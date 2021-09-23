@@ -6,20 +6,24 @@
 	"properties": {
 		"hostname": {"type": "string"},
 		"clustername": {"type": "string"},
+		"instance": {"type": "string"},
 		"os": { "type": "string",
-				"enum": [ "toss", "rhel8", "centos8"
+				"enum": [ "toss", "rhel", "centos", "debian"
 				]},
 		"architecture": {"type": "string",
 						"enum": ["x86", "aarch64", "ppc64", "arm64"]},
-		"executor": {"type": "string",
+		"executor_type": {"type": "string",
 					 "enum": ["shell", "batch", "docker", "docker-machine", "ssh", 
 					 "custom", "virtualbox"]},
+		"scheduler": {"type":"string"},
+		"custom": {"type": "array"},
+		"env" : {"type": "array"},
 		"GPU": { "type": "string"},
 		"micro-architecture": {"type": "string"},
 		"storage-mounts": {"type" : "string"},
 		"network": {"type": "string"},
 		"target-node": {"type": "string"}
 	},
-	"required": ["hostname", "clustername", "os", "architecture", "executor"],
+	"required": ["hostname", "instance", "executor_type"],
 	"custom-name": "custom"
 }

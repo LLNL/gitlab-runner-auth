@@ -15,6 +15,7 @@
 
 import os
 import re
+import importlib
 import sys
 import stat
 import socket
@@ -24,6 +25,7 @@ import toml
 import logging
 import gitlab
 import json
+from jsonschema import validate, ValidationError
 from pathlib import Path
 from shutil import which
 from gitlab.exceptions import (
@@ -54,51 +56,39 @@ def generate_tags(instance, executor_type="", env=None, tag_schema=None):
     These tags are specified by runner configs and used by CI specs to run jobs
     on the appropriate host.
     """
-    arch_info = archspec.cpu.host()
-    tags = identifying_tags(instance)
-
-    # append system architecture data gathered by archspec to tags
-    tags.append(arch_info.name)
-    for i in arch_info.ancestors:
-        tags.append(i.name)
-
-    #Append Executor Type    
-    if executor_type:
-        if tag_schema is None:
-                tags.append(executor_type)
-        else:
-            if executor_type in tag_schema["properties"]["executor"]["enum"]:
-                tags.append(executor_type)
-            else:
-                raise ValueError("{} is not a valid executor".format(executor_type))
-    if env:
-        tags += [os.environ[e] for e in env if e in os.environ]
-        #if schema is provided, check all user submitted tags against it.
-        if tag_schema:
-            for e in env:
-                #"tag schema" is to be applied here
-                if e in tag_schema["properties"]["os"]["enum"]:
-                    tags.append(e);
-                elif e in tag_schema['properties']['executor']['enum']:
-                    tags.append(e);
-                elif e in arch_info.ancestors:
-                    pass;
-                elif e in tag_schema['properties']['architecture']['enum']:
-                    tags.append(e);
-                else:
-                # if we don't recognize the tag, prepend name 
-                    tags.append(tag_schema['custom-name']+"_"+e)
-
+    properties = {
+        "hostname": HOSTNAME,
+        "executor_type": executor_type,
+        "instance": instance,
+        "env": []
+        }
+    if env: 
+        properties["env"] += [os.environ[e] for e in env if e in os.environ]
     # if executor is batch, gather some more system info for tags
     if executor_type == "batch":
         if which("bsub"):
-            tags.append("lsf")
+            properties["scheduler"] = "lsf"
         elif which("salloc"):
-            tags.append("slurm")
+            properties["scheduler"] = "slurm"
         elif which("cqsub"):
-            tags.append("cobalt")
-
-    return tags
+            properties["scheduler"] = "cobalt"
+    try:
+        properties.update(capture_tags.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema))
+    except NameError:
+        logger.info("Custom Tag Capture method not provided")
+    try:
+        if tag_schema:
+            validate(instance=properties, schema=tag_schema)
+        tags = list(properties.values())
+        for i in tags:
+            if isinstance(i, list):
+                for j in i:
+                    tags.append(j)
+        return tags
+    except ValidationError as e:
+      logger.error(e)
+      # re-raise to handle somewhere higher up. We should fail startup if we can't tag things according to the schema
+      raise e
 
 
 class Runner:
@@ -308,6 +298,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--tag-schema", default="tag_schema.json", help="""Schema to be applied for tagging executors"""
     )
+    parser.add_argument(
+        "--capture-tags", default="capture_tags", help="""Script to capture/generate runner tags"""
+    )
     args = parser.parse_args()
 
     #try to retrieve tag schema from json file
@@ -316,5 +309,8 @@ if __name__ == "__main__":
             schema = json.load(fh)
     except FileNotFoundError:
             schema = None
-
+    try:
+        module = __import__(args.capture_tags)
+    except ModuleNotFoundError:
+        logger.info("Tag capture script could not be read.")
     generate_runner_config(Path(args.prefix), args.service_instance, schema)
