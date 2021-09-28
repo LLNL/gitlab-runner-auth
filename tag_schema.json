@@ -1,6 +1,6 @@
 {
 	"$id": "https://example.com/tag_schema.json",
-	"$schema": "http://json-schema.org/schema#",
+	"$schema": "http://json-schema.org/schema/",
 	"title": "tag_schema",
 	"type": "object",
 	"properties": {

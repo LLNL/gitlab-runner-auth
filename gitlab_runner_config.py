@@ -47,7 +47,23 @@ def identifying_tags(instance):
     return list(identifiers)
 
 
-def generate_tags(instance, executor_type="", env=None, tag_schema=None):
+def flatten_values(d):
+    #recursively collect dictionary values into a list
+
+    if isinstance(d, list):
+        combined = []
+        for item in d:
+            combined += flatten_values(item)
+        return combined
+    elif isinstance(d, dict):
+        combined = []
+        for item in d.values():
+            combined += flatten_values(item)
+        return combined
+    else:
+        return [d]
+
+def generate_tags(instance, executor_type="", env=None, tag_schema=None, test=False):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -64,27 +80,15 @@ def generate_tags(instance, executor_type="", env=None, tag_schema=None):
         }
     if env: 
         properties["env"] += [os.environ[e] for e in env if e in os.environ]
-    # if executor is batch, gather some more system info for tags
-    if executor_type == "batch":
-        if which("bsub"):
-            properties["scheduler"] = "lsf"
-        elif which("salloc"):
-            properties["scheduler"] = "slurm"
-        elif which("cqsub"):
-            properties["scheduler"] = "cobalt"
+    
     try:
-        properties.update(capture_tags.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema))
+        properties.update(tagcap.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema))
     except NameError:
         logger.info("Custom Tag Capture method not provided")
     try:
         if tag_schema:
             validate(instance=properties, schema=tag_schema)
-        tags = list(properties.values())
-        for i in tags:
-            if isinstance(i, list):
-                for j in i:
-                    tags.append(j)
-        return tags
+        return flatten_values(properties)
     except ValidationError as e:
       logger.error(e)
       # re-raise to handle somewhere higher up. We should fail startup if we can't tag things according to the schema
@@ -310,7 +314,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
             schema = None
     try:
-        module = __import__(args.capture_tags)
+        tagcap = importlib.import_module(p)
     except ModuleNotFoundError:
         logger.info("Tag capture script could not be read.")
     generate_runner_config(Path(args.prefix), args.service_instance, schema)
