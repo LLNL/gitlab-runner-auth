@@ -300,7 +300,7 @@ if __name__ == "__main__":
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
     parser.add_argument(
-        "--tag-schema", default="tag_schema.json", help="""Schema to be applied for tagging executors"""
+        "--tag-schema", default=None, help="""Schema to be applied for tagging executors"""
     )
     parser.add_argument(
         "--capture-tags", default="capture_tags", help="""Script to capture/generate runner tags"""

@@ -79,7 +79,8 @@ Optionally, you can provide register-runner with a tag schema or alternative tag
 capture method in your own module. Use the flag `--tag-schema` to specify a json
 schema file to validate runner tags, and `--capture-tags` to specify a python module
 containing a custom 'capture_tags()' method. Prewritten examples are included as 
-`tag_schema.json` and `capture_tags.py` respectively.
+`tag_schema.json` and `capture_tags.py` respectively. By default, tag schema validation 
+is not enabled.
 
 ## Testing
 

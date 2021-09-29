@@ -214,7 +214,6 @@ def test_generate_tags(instance):
     hostname = socket.gethostname()
     assert instance in tags
     assert hostname in tags
-    assert re.sub(r"\d", "", hostname) in tags
 
     # test finding a resource manager
     with TemporaryDirectory() as td:
