@@ -226,6 +226,7 @@ def test_generate_tags(instance):
                     schema = json.load(fh)
             tags = generate_tags(instance, executor_type="batch", tag_schema=schema, test=True)
             return tags
+        #test schema runs without error
         get_tags (tag_schema="tag_schema.json")
 
 

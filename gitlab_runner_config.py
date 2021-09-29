@@ -314,7 +314,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
             schema = None
     try:
-        tagcap = importlib.import_module(p)
+        tagcap = importlib.import_module(args.capture_tags)
     except ModuleNotFoundError:
         logger.info("Tag capture script could not be read.")
     generate_runner_config(Path(args.prefix), args.service_instance, schema)
