@@ -223,10 +223,11 @@ def test_generate_tags(instance):
             if tag_schema:
                 with open(tag_schema) as fh:
                     schema = json.load(fh)
-            tags = generate_tags(instance, executor_type="batch", tag_schema=schema, test=True)
+            tags = generate_tags(instance, executor_type="batch", tag_schema=schema)
             return tags
-        #test schema runs without error
-        get_tags (tag_schema="tag_schema.json")
+
+        # test schema runs without error
+        get_tags(tag_schema="tag_schema.json")
 
 
 def test_generate_tags_env(instance):

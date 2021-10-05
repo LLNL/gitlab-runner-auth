@@ -11,15 +11,15 @@
 				"enum": [ "toss", "rhel", "centos", "debian"
 				]},
 		"architecture": {"type": "string",
-						"enum": ["x86", "aarch64", "ppc64", "arm64"]},
+						"enum": ["x86", "aarch64", "ppc64", "arm64", "sandybridge"]},
 		"executor_type": {"type": "string",
-					 "enum": ["shell", "batch", "docker", "docker-machine", "ssh", 
+					 "enum": ["shell", "batch", "docker", "docker-machine", "ssh",
 					 "custom", "virtualbox"]},
 		"scheduler": {"type":"string"},
 		"custom": {"type": "array"},
 		"env" : {"type": "array"},
 		"GPU": { "type": "string"},
-		"micro-architecture": {"type": "string"},
+		"micro-architecture": {"type": "array"},
 		"storage-mounts": {"type" : "string"},
 		"network": {"type": "string"},
 		"target-node": {"type": "string"}

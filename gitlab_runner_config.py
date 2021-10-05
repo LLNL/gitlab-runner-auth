@@ -20,7 +20,6 @@ import sys
 import stat
 import socket
 import argparse
-import archspec.cpu
 import toml
 import logging
 import gitlab
@@ -39,6 +38,7 @@ LOGGER_NAME = "gitlab-runner-config"
 logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s", level=logging.INFO)
 logger = logging.getLogger(LOGGER_NAME)
 
+
 def identifying_tags(instance):
     identifiers = set([HOSTNAME, re.sub(r"\d", "", HOSTNAME), "managed"])
     if instance in identifiers:
@@ -48,7 +48,7 @@ def identifying_tags(instance):
 
 
 def flatten_values(d):
-    #recursively collect dictionary values into a list
+    """recursively collect dictionary values into a list"""
 
     if isinstance(d, list):
         combined = []
@@ -63,7 +63,8 @@ def flatten_values(d):
     else:
         return [d]
 
-def generate_tags(instance, executor_type="", env=None, tag_schema=None, test=False):
+
+def generate_tags(instance, executor_type="", env=None, tag_schema=None):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -76,13 +77,15 @@ def generate_tags(instance, executor_type="", env=None, tag_schema=None, test=Fa
         "hostname": HOSTNAME,
         "executor_type": executor_type,
         "instance": instance,
-        "env": []
-        }
-    if env: 
+        "env": [],
+    }
+    if env:
         properties["env"] += [os.environ[e] for e in env if e in os.environ]
-    
+
     try:
-        properties.update(tagcap.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema))
+        properties.update(
+            tagcap.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema)
+        )
     except NameError:
         logger.info("Custom Tag Capture method not provided")
     try:
@@ -90,9 +93,9 @@ def generate_tags(instance, executor_type="", env=None, tag_schema=None, test=Fa
             validate(instance=properties, schema=tag_schema)
         return flatten_values(properties)
     except ValidationError as e:
-      logger.error(e)
-      # re-raise to handle somewhere higher up. We should fail startup if we can't tag things according to the schema
-      raise e
+        logger.error(e)
+        # re-raise to handle somewhere higher up. We should fail startup if we can't tag things according to the schema
+        raise e
 
 
 class Runner:
@@ -114,15 +117,17 @@ class Executor:
         self.by_description = {}
         self.instance = instance
         self.configs = configs
-        self.tag_schema = tag_schema;
+        self.tag_schema = tag_schema
         self.normalize()
 
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
             c["tags"] = generate_tags(
-                self.instance, executor_type=executor, env=c.get("env_tags"), 
-                tag_schema=self.tag_schema
+                self.instance,
+                executor_type=executor,
+                env=c.get("env_tags"),
+                tag_schema=self.tag_schema,
             )
             c["description"] = "{host} {instance} {executor} Runner".format(
                 host=HOSTNAME, instance=self.instance, executor=executor
@@ -300,19 +305,23 @@ if __name__ == "__main__":
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
     parser.add_argument(
-        "--tag-schema", default=None, help="""Schema to be applied for tagging executors"""
+        "--tag-schema",
+        default=None,
+        help="""Schema to be applied for tagging executors""",
     )
     parser.add_argument(
-        "--capture-tags", default="capture_tags", help="""Script to capture/generate runner tags"""
+        "--capture-tags",
+        default="capture_tags",
+        help="""Script to capture/generate runner tags""",
     )
     args = parser.parse_args()
 
-    #try to retrieve tag schema from json file
+    # try to retrieve tag schema from json file
     try:
         with open(args.tag_schema) as fh:
             schema = json.load(fh)
     except FileNotFoundError:
-            schema = None
+        schema = None
     try:
         tagcap = importlib.import_module(args.capture_tags)
     except ModuleNotFoundError:

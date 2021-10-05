@@ -1,5 +1,6 @@
 # py cruft
 __pycache__
+*.pyc
 
 # vim cruft
 *.sw*

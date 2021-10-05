@@ -1,12 +1,14 @@
 import archspec.cpu
 from shutil import which
+
+
 def capture_tags(instance, executor_type, env=None, tag_schema=None):
     # append system architecture data gathered by archspec to tags
     arch_info = archspec.cpu.host()
     properties = {
         "architecture": arch_info.name,
         "micro-architecture": [],
-        "custom": []
+        "custom": [],
     }
 
     for i in arch_info.ancestors:
@@ -22,14 +24,12 @@ def capture_tags(instance, executor_type, env=None, tag_schema=None):
     if env:
         if tag_schema:
             for e in env:
-                #"tag schema" is to be applied here
+                # "tag schema" is to be applied here
                 if e in tag_schema["properties"]["os"]["enum"]:
                     properties["os"] = e
-                elif e in arch_info.ancestors:
-                    pass;
-                elif e in tag_schema['properties']['architecture']['enum']:
+                elif e in tag_schema["properties"]["architecture"]["enum"]:
                     properties["architecture"] = e
                 else:
-                # if we don't recognize the tag, prepend name 
-                    properties["custom"] += tag_schema['custom-name']+"_"+e
+                    # if we don't recognize the tag, prepend name
+                    properties["custom"].append(tag_schema["custom-name"] + "_" + e)
     return properties
