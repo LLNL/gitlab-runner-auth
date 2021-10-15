@@ -214,26 +214,20 @@ def test_generate_tags(instance):
     hostname = socket.gethostname()
     assert instance in tags
     assert hostname in tags
-    assert re.sub(r"\d", "", hostname) in tags
 
     # test finding a resource manager
     with TemporaryDirectory() as td:
-        managers = {
-            "slurm": os.path.join(td, "salloc"),
-            "lsf": os.path.join(td, "bsub"),
-            "cobalt": os.path.join(td, "cqsub"),
-        }
 
-        os.environ["PATH"] += os.pathsep + td
-
-        def get_tags(exe):
-            Path(exe).touch()
-            os.chmod(exe, os.stat(exe).st_mode | stat.S_IEXEC)
-            tags = generate_tags(instance, executor_type="batch")
-            os.unlink(exe)
+        def get_tags(tag_schema=None):
+            schema = None
+            if tag_schema:
+                with open(tag_schema) as fh:
+                    schema = json.load(fh)
+            tags = generate_tags(instance, executor_type="batch", tag_schema=schema)
             return tags
 
-        assert all(manager in get_tags(exe) for manager, exe in managers.items())
+        # test schema runs without error
+        get_tags(tag_schema="tag_schema.json")
 
 
 def test_generate_tags_env(instance):

@@ -1,0 +1,36 @@
+{
+	"$id": "https://example.com/tag_schema.json",
+	"$schema": "http://json-schema.org/schema/",
+	"title": "tag_schema",
+	"type": "object",
+	"properties": {
+		"hostname": {"type": "string"},
+		"clustername": {"type": "string"},
+		"instance": {"type": "string"},
+		"os": { "type": "string",
+				"enum": [ "toss", "rhel", "centos", "debian", "win32", "macos", "osx", "fedora",
+					 "freebsd", "linux", "unix", "dos", "cygwin", "ros"]
+				},
+		"architecture": {"type": "string",
+						"enum": ["a64fx", "arm", "arm64", "aarch64", "broadwell", "bulldozer",
+							 "cascadelake", "cannonlake", "core2", "excavator", "haswell", "graviton",
+							 "graviton2", "i686", "icelake", "ivybridge", "k10", "mic_knl", "nehalem",
+							 "nocona", "pentium2", "pentium3", "pentium4", "power7", "power8", "power9",
+							 "power8le", "power9le", "prescott", "ppc", "ppcle", "ppc64", "ppc64le", "piledriver",
+							 "sandybridge", "skylake", "skylake_avx512", "steamroller", "sparc64",
+							"sparc", "thunderx2", "westmere", "x86", "x86_64", "zen", "zen2"]},
+		"executor_type": {"type": "string",
+					 "enum": ["shell", "batch", "docker", "docker-machine", "ssh",
+					 "custom", "virtualbox"]},
+		"scheduler": {"type":"string"},
+		"custom": {"type": "array"},
+		"env" : {"type": "array"},
+		"GPU": { "type": "string"},
+		"micro-architecture": {"type": "array"},
+		"storage-mounts": {"type" : "string"},
+		"network": {"type": "string"},
+		"target-node": {"type": "string"}
+	},
+	"required": ["hostname", "instance", "executor_type"],
+	"custom-name": "custom"
+}

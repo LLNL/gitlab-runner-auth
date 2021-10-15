@@ -73,7 +73,14 @@ Additionally, this tool required a feature that has since been deprecated by
 GitLab. Previously, for privileged (admin) calls to the API, the runner info
 endpoint would return the token for the associated runner. To enable this
 feature again, a GitLab server patch modifying `gitlab-rails`
-`lib/api/entities/runner_details.rb` is provided with this repo.
+`lib/api/entities/runner_details.rb` is provided with this repo. 
+
+Optionally, you can provide register-runner with a tag schema or alternative tag
+capture method in your own module. Use the flag `--tag-schema` to specify a json
+schema file to validate runner tags, and `--capture-tags` to specify a python module
+containing a custom 'capture_tags()' method. Prewritten examples are included as 
+`tag_schema.json` and `capture_tags.py` respectively. By default, tag schema validation 
+is not enabled.
 
 ## Testing
 

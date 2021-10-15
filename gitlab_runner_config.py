@@ -15,6 +15,7 @@
 
 import os
 import re
+import importlib
 import sys
 import stat
 import socket
@@ -22,6 +23,8 @@ import argparse
 import toml
 import logging
 import gitlab
+import json
+from jsonschema import validate, ValidationError
 from pathlib import Path
 from shutil import which
 from gitlab.exceptions import (
@@ -44,7 +47,24 @@ def identifying_tags(instance):
     return list(identifiers)
 
 
-def generate_tags(instance, executor_type="", env=None):
+def flatten_values(d):
+    """recursively collect dictionary values into a list"""
+
+    if isinstance(d, list):
+        combined = []
+        for item in d:
+            combined += flatten_values(item)
+        return combined
+    elif isinstance(d, dict):
+        combined = []
+        for item in d.values():
+            combined += flatten_values(item)
+        return combined
+    else:
+        return [d]
+
+
+def generate_tags(instance, executor_type="", env=None, tag_schema=None):
     """The set of tags for a host
 
     Minimally, this is the system hostname, but should include things like OS,
@@ -53,20 +73,29 @@ def generate_tags(instance, executor_type="", env=None):
     These tags are specified by runner configs and used by CI specs to run jobs
     on the appropriate host.
     """
-
-    tags = identifying_tags(instance)
-    if executor_type:
-        tags.append(executor_type)
+    properties = {
+        "hostname": HOSTNAME,
+        "executor_type": executor_type,
+        "instance": instance,
+        "env": [],
+    }
     if env:
-        tags += [os.environ[e] for e in env if e in os.environ]
-    if executor_type == "batch":
-        if which("bsub"):
-            tags.append("lsf")
-        elif which("salloc"):
-            tags.append("slurm")
-        elif which("cqsub"):
-            tags.append("cobalt")
-    return tags
+        properties["env"] += [os.environ[e] for e in env if e in os.environ]
+
+    try:
+        properties.update(
+            tagcap.capture_tags(instance, executor_type, env=env, tag_schema=tag_schema)
+        )
+    except NameError:
+        logger.info("Custom Tag Capture method not provided")
+    try:
+        if tag_schema:
+            validate(instance=properties, schema=tag_schema)
+        return flatten_values(properties)
+    except ValidationError as e:
+        logger.error(e)
+        # re-raise to handle somewhere higher up. We should fail startup if we can't tag things according to the schema
+        raise e
 
 
 class Runner:
@@ -84,17 +113,21 @@ class Runner:
 
 
 class Executor:
-    def __init__(self, instance, configs):
+    def __init__(self, instance, configs, tag_schema=None):
         self.by_description = {}
         self.instance = instance
         self.configs = configs
+        self.tag_schema = tag_schema
         self.normalize()
 
     def normalize(self):
         for c in self.configs:
             executor = c["executor"]
             c["tags"] = generate_tags(
-                self.instance, executor_type=executor, env=c.get("env_tags")
+                self.instance,
+                executor_type=executor,
+                env=c.get("env_tags"),
+                tag_schema=self.tag_schema,
             )
             c["description"] = "{host} {instance} {executor} Runner".format(
                 host=HOSTNAME, instance=self.instance, executor=executor
@@ -191,18 +224,18 @@ class GitLabClientManager:
             )
 
 
-def load_executors(instance, template_dir):
+def load_executors(instance, template_dir, tag_schema=None):
     executor_configs = []
     for executor_toml in template_dir.glob("*.toml"):
         with executor_toml.open() as et:
             executor_configs.append(toml.load(et))
-    return Executor(instance, executor_configs)
+    return Executor(instance, executor_configs, tag_schema)
 
 
-def create_runner(config, instance, template_dir):
+def create_runner(config, instance, template_dir, tag_schema=None):
     config_copy = dict(config)
     del config_copy["client_configs"]
-    return Runner(config_copy, load_executors(instance, template_dir))
+    return Runner(config_copy, load_executors(instance, template_dir, tag_schema))
 
 
 def owner_only_permissions(path):
@@ -216,7 +249,7 @@ def secure_permissions(prefix, template_dir):
     return True
 
 
-def generate_runner_config(prefix, instance):
+def generate_runner_config(prefix, instance, tag_schema=None):
     instance_config_file = prefix / "config.{}.toml".format(instance)
     instance_config_template_file = prefix / "config.template.{}.toml".format(instance)
     executor_template_dir = prefix / instance
@@ -240,7 +273,7 @@ def generate_runner_config(prefix, instance):
         logger.error(e)
         sys.exit(1)
 
-    runner = create_runner(config, instance, executor_template_dir)
+    runner = create_runner(config, instance, executor_template_dir, tag_schema)
     logger.info(
         "loaded executors from {templates}".format(templates=executor_template_dir)
     )
@@ -271,5 +304,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "--service-instance", default="main", help="""Instance name from systemd"""
     )
+    parser.add_argument(
+        "--tag-schema",
+        default=None,
+        help="""Schema to be applied for tagging executors""",
+    )
+    parser.add_argument(
+        "--capture-tags",
+        default="capture_tags",
+        help="""Script to capture/generate runner tags""",
+    )
     args = parser.parse_args()
-    generate_runner_config(Path(args.prefix), args.service_instance)
+
+    # try to retrieve tag schema from json file
+    try:
+        with open(args.tag_schema) as fh:
+            schema = json.load(fh)
+    except FileNotFoundError:
+        schema = None
+    try:
+        tagcap = importlib.import_module(args.capture_tags)
+    except ModuleNotFoundError:
+        logger.info("Tag capture script could not be read.")
+    generate_runner_config(Path(args.prefix), args.service_instance, schema)
