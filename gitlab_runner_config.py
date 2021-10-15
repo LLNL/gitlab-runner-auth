@@ -207,6 +207,7 @@ class GitLabClientManager:
                             "description": missing["description"],
                             "token": registration_token,
                             "tag_list": ",".join(missing["tags"]),
+                            "run_untagged": False,
                         }
                     )
                     runner.executor.add_token(missing["description"], info.token)
