@@ -317,12 +317,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # try to retrieve tag schema from json file
-    try:
+    # Assume no schema, but if given a valid file path load it in
+    schema = None
+    if args.tag_schema and Path(args.tag_schema).is_file():
         with open(args.tag_schema) as fh:
             schema = json.load(fh)
-    except FileNotFoundError:
-        schema = None
+    else:
+        logger.info("No schema loaded")
+
     try:
         tagcap = importlib.import_module(args.capture_tags)
     except ModuleNotFoundError:
